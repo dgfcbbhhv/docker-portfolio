@@ -174,6 +174,53 @@ _FACTOR_BATCH = {"running": False, "done": False, "total": 0, "i": 0,
                  "results": {}, "ts": None, "error": None}
 _FACTOR_BATCH_LOCK = threading.Lock()
 
+def _renderable_df(df):
+    """防御性序列化清理：外部数据列可能把 `—`/缺省文本与数字混在一个 object 列里，
+    pyarrow 推断 int64 时会抛 ArrowInvalid。这里将确实"文本+数字混排"的列统一转字符串，
+    从而让 st.dataframe/line_chart 无论列名来源都能安全渲染。"""
+    try:
+        if df is None or getattr(df, "empty", True) or isinstance(df, str):
+            return df
+    except Exception:
+        return df
+    try:
+        out = df.copy()
+    except Exception:
+        return df
+    for col in out.columns:
+        try:
+            s = out[col]
+            if s.dtype != object:
+                continue
+            non_null = s.dropna()
+            if len(non_null) == 0:
+                continue
+            types = {type(v) for v in non_null.tolist()}
+            has_str = any(v.__class__ is str for v in non_null.tolist())
+            has_num = any(isinstance(v, (int, float)) and not isinstance(v, bool)
+                          for v in non_null.tolist())
+            if has_str and has_num:
+                out[col] = s.astype(str)
+        except Exception:
+            continue
+    return out
+
+# 在渲染边界统一兜底：任一 tab 的 DataFrame 若含"文本+数字混排"列都会过 _renderable_df，
+# 从根上避免 pyarrow 推断 int 失败（如外部数据列名"质量分"值含 '—'）造成"页面没有响应/崩溃"。
+for _df_api in ("dataframe", "data_editor", "line_chart", "area_chart", "bar_chart", "scatter_chart"):
+    _orig_api = getattr(st, _df_api, None)
+    if _orig_api is None:
+        continue
+
+    def _st_safe(*_args, _name=_df_api, _orig=_orig_api, **kwargs):
+        args = list(_args)
+        if args and isinstance(args[0], pd.DataFrame):
+            args[0] = _renderable_df(args[0])
+        return _orig(*args, **kwargs)
+
+    _st_safe.__name__ = _df_api
+    setattr(st, _df_api, _st_safe)
+
 def _factor_batch_run(watch_codes, do_train):
     def _run():
         with _FACTOR_BATCH_LOCK:
