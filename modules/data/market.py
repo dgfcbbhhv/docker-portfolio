@@ -937,6 +937,21 @@ def fetch_vol(code, mkt="A"):
 
     except Exception:
         pass
+    # 港美股波动率备援：主数据源(akshare/美股接口)失败时用长桥日K计算真实已实现波动率，
+    # 避免回落 20% 占位波动率导致蒙特卡洛回撤被判定"数据不足"。
+    if mkt in ("H", "HK", "US"):
+        try:
+            from modules.data.longbridge import fetch_hist as _lb_fetch_hist
+            _d = _lb_fetch_hist(code, days=120)
+            if _d is not None and not _d.empty and "close" in _d.columns:
+                _cls = _d["close"].to_numpy(dtype=float)
+                if len(_cls) > 10:
+                    _v = float(np.std(np.log(_cls[1:] / _cls[:-1])) * np.sqrt(252))
+                    if _v > 0:
+                        save("vol", k, pd.DataFrame([{"v": _v}]))
+                        return _v
+        except Exception:
+            pass
     return 0.2
 
 
