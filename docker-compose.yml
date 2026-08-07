@@ -1,0 +1,60 @@
+version: "3.8"
+
+x-alert-env: &alert-env
+  TZ: Asia/Shanghai
+  SMTP_SERVER: ${SMTP_SERVER:-}
+  SMTP_PORT: ${SMTP_PORT:-}
+  SMTP_USER: ${SMTP_USER:-}
+  SMTP_PASS: ${SMTP_PASS:-}
+  ALERT_TO: ${ALERT_TO:-}
+  WECHAT_WEBHOOK: ${WECHAT_WEBHOOK:-}
+  TG_TOKEN: ${TG_TOKEN:-}
+  TG_CHAT_ID: ${TG_CHAT_ID:-}
+  WEBHOOK_URL: ${WEBHOOK_URL:-}
+  BARK_URL: ${BARK_URL:-}
+  BARK_KEY: ${BARK_KEY:-}
+  BARK_IV: ${BARK_IV:-}
+  LONGBRIDGE_APP_KEY: ${LONGBRIDGE_APP_KEY:-}
+  LONGBRIDGE_APP_SECRET: ${LONGBRIDGE_APP_SECRET:-}
+  LONGBRIDGE_ACCESS_TOKEN: ${LONGBRIDGE_ACCESS_TOKEN:-}
+  LONGBRIDGE_REGION: ${LONGBRIDGE_REGION:-cn}
+
+x-app-volumes: &app-volumes
+  - ./data:/app/data
+  - ./notes:/app/notes
+  - ./modules:/app/modules
+  - ./app.py:/app/app.py
+  - ./config.json:/app/config.json
+  - ./entrypoint.sh:/app/entrypoint.sh
+
+services:
+  portfolio:
+    build: .
+    container_name: dividend-portfolio
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      <<: *alert-env
+    volumes: *app-volumes
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8501/_stcore/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  alert-worker:
+    build: .
+    container_name: dividend-alert-worker
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      <<: *alert-env
+      MODE: alert-worker
+    volumes: *app-volumes
+    healthcheck:
+      test: ["CMD", "python", "-c", "import json,os,time; p='data/worker_heartbeat.json'; assert os.path.exists(p); d=json.load(open(p)); assert time.time()-d['ts']<600"]
+      interval: 5m
+      timeout: 10s
+      retries: 3
+      start_period: 30s

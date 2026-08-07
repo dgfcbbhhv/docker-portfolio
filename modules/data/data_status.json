@@ -1,0 +1,29 @@
+{
+  "collected_at": "2026-08-07T14:52:31.861116",
+  "categories": {
+    "spot": {
+      "max_age_seconds": null
+    },
+    "fin": {
+      "max_age_seconds": null
+    },
+    "div": {
+      "max_age_seconds": null
+    },
+    "vol": {
+      "max_age_seconds": null
+    },
+    "hist": {
+      "max_age_seconds": null
+    },
+    "sma": {
+      "max_age_seconds": null
+    },
+    "pctl": {
+      "max_age_seconds": null
+    },
+    "listing": {
+      "max_age_seconds": null
+    }
+  }
+}

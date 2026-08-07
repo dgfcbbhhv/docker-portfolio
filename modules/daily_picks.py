@@ -1,0 +1,275 @@
+"""每日收盘后价值投资选股。
+
+流程:
+1. 候选池 = config.watch_list, 已持有名单 = config.portfolio
+2. 用 build_portfolio_df(扩展池) 计算评分 / Kelly / 估值
+3. 按规则分类: 可建仓 / 可加仓 / 可关注 / 不推送
+4. 生成带可溯源字段的理由文案
+
+规则阈值来自 config.json daily_push 段。
+数据缺失一律写"数据不足"，不做推断填充。
+"""
+import datetime
+import logging
+import os
+
+logger = logging.getLogger(__name__)
+
+from modules.config import (WATCH_LIST, PORT_A, PORT_HK, PORT_REIT, PORT_US,
+                            DAILY_PUSH, ALERT_CHANNELS)
+from modules.cost_tier import calc_overall_tier
+from modules.portfolio_engine import build_portfolio_df
+
+
+def _held_codes():
+    """config.portfolio 中的全部已持有代码。"""
+    held = {}
+    for mapping in (PORT_A, PORT_HK, PORT_US, PORT_REIT):
+        for code in mapping:
+            held[code] = True
+    return held
+
+
+def _market_for_code(code):
+    """由 watch_list 判断股票市场: A/HK/US/REIT。"""
+    w = WATCH_LIST.get(code, {})
+    mkt = str(w.get("market", "")).upper()
+    if mkt in ("A", "HK", "US"):
+        return mkt
+    if code in PORT_REIT:
+        return "REIT"
+    # 兜底: 由代码形态判断
+    if code.isdigit():
+        if code.startswith(("60", "00", "30", "68", "50")):
+            return "A"
+        return "HK"
+    return "US"
+
+
+def _fmt(v, nd=1, suffix=""):
+    """None/0 返回 '数据不足'。"""
+    if v is None or (isinstance(v, (int, float)) and (v != v or v == 0)):
+        return "数据不足"
+    try:
+        return f"{float(v):.{nd}f}{suffix}"
+    except (ValueError, TypeError):
+        return "数据不足"
+
+
+def _build_watch_pool():
+    """把 watch_list 全量作为扩展池, 计算每只股票的评分/Kelly/估值。
+
+    已持有的股票沿用 config.portfolio 的真实配置(名称+仓位), 保证
+    ratio_norm / Kelly 空间计算与主界面一致; 未持有的按 ratio=0 处理。
+    """
+    port_cfg = {}
+    for mapping in (PORT_A, PORT_HK, PORT_REIT, PORT_US):
+        for code, cfg in mapping.items():
+            port_cfg[code] = cfg
+    pm = {"A": {}, "HK": {}, "REIT": {}, "US": {}}
+    for code, info in WATCH_LIST.items():
+        mkt = _market_for_code(code)
+        if mkt not in pm:
+            continue
+        held = port_cfg.get(code)
+        if held is not None:
+            pm[mkt][code] = {"name": held.get("name", code),
+                             "ratio": float(held.get("ratio", 0) or 0)}
+        else:
+            pm[mkt][code] = {"name": info.get("name", code), "ratio": 0}
+    df, meta = build_portfolio_df(cfg=None, portfolio_map=pm)
+    return df, meta
+
+
+def _tier_text(code, current_price, held):
+    """成本档位文案。未持有/无成本数据按 当前价=成本 估算。"""
+    if not held:
+        return "未持有，无成本记录；按当前价估算成本"
+    info = calc_overall_tier(code, current_price)
+    tier = info.get("tier", "数据不足")
+    if tier == "数据不足":
+        return "数据不足（无成本或分红数据）"
+    cost_dy = info.get("cost_dy")
+    cur_dy = info.get("current_dy")
+    parts = [f"成本档位: {tier}"]
+    if cost_dy is not None and cur_dy is not None:
+        parts.append(f"(成本股息率 {cost_dy}% vs 当前 {cur_dy}%)")
+    return " ".join(parts)
+
+
+def _classify(row, held, buy_th, watch_th, add_gap):
+    """返回 (category, reason_lines)。
+
+    category: 可建仓 / 可加仓 / 可关注 / 不推送
+    """
+    total = float(row.get("lishing", 0) or 0)
+    flags = str(row.get("lishing_flags", "") or "").strip()
+    growth_path = bool(row.get("growth_factors"))
+    price = float(row.get("price", 0) or 0)
+
+    # 数据不足 / 红旗 → 不推送
+    if total <= 0 or price <= 0:
+        return "不推送", ["数据不足，无法评估"]
+    # US 成长股路径的 lishing_flags 是因子得分拆分，非红旗；仅 A/HK 路径才视作红旗
+    if flags and not growth_path:
+        return "不推送", [f"红旗/不达标: {flags}"]
+
+    kelly = float(row.get("kelly_final", 0) or 0)
+    ratio = float(row.get("ratio_norm", 0) or 0)
+    gap = kelly - ratio
+
+    if not held:
+        # 可建仓: 评分≥买入线 且 Kelly>0
+        if total >= buy_th and kelly > 0:
+            return "可建仓", [f"未持有，符合建仓条件"]
+        if total >= watch_th:
+            return "可关注", [f"未持有，评分 {total:.0f}，Kelly {kelly:.1f}% 未达标建仓"]
+        return "不推送", [f"评分 {total:.0f} 低于关注线 {watch_th:.0f}"]
+
+    # 已持有
+    tier = calc_overall_tier(row["code"], price).get("tier", "数据不足")
+    if total >= buy_th and gap > add_gap and tier != "警戒":
+        return "可加仓", [f"评分达标，加仓空间 {gap:.1f}%（Kelly {kelly:.1f}% vs 当前 {ratio:.1f}%）"]
+    if total >= buy_th and gap <= add_gap:
+        return "可关注", [f"评分达标但加仓空间不足（{gap:.1f}% ≤ {add_gap:.1f}%）"]
+    if total >= buy_th and tier == "警戒":
+        return "可关注", [f"评分达标但成本档位为警戒，暂缓加仓"]
+    if total >= watch_th:
+        return "可关注", [f"评分 {total:.0f} 在关注区间（{watch_th:.0f}-{buy_th:.0f}）"]
+    return "不推送", [f"评分 {total:.0f} 低于关注线 {watch_th:.0f}"]
+
+
+def _reason_lines(row, held, category, market, add_gap):
+    """生成理由条目列表。"""
+    total = float(row.get("lishing", 0) or 0)
+    price = float(row.get("price", 0) or 0)
+    kelly = float(row.get("kelly_final", 0) or 0)
+    ratio = float(row.get("ratio_norm", 0) or 0)
+
+    lines = []
+    lines.append(f"- 李式评分 {_fmt(total, 0)}/100，未触发红旗")
+    pe = _fmt(row.get("pe"), 1)
+    pb = _fmt(row.get("pb"), 1)
+    dy = _fmt(row.get("dy"), 1)
+    lines.append(f"- PE {pe}、PB {pb}，股息率 {dy}%")
+    roe = _fmt(row.get("roe"), 1)
+    debt = _fmt(row.get("debt"), 1)
+    ocf = _fmt(row.get("ocf_ratio"), 1)
+    lines.append(f"- ROE {roe}%，资产负债率 {debt}%，经营现金流/净利润 {ocf}")
+
+    try:
+        from modules.valuation import valuate, push_lines
+        lines.extend(push_lines(valuate(row)))
+    except Exception:
+        pass
+    if category in ("可加仓", "可关注"):
+        lines.append(f"- Kelly 参考仓位 {_fmt(kelly, 1)}%，当前占比 {_fmt(ratio, 1)}%")
+        if held:
+            lines.append(_tier_text(row["code"], price, True))
+    elif category == "可建仓":
+        lines.append(_tier_text(row["code"], price, False))
+    return lines
+
+
+def build_picks(include_announcements=True):
+    """生成每日选股结果。
+
+    Returns:
+        dict: {
+            "date": "YYYY-MM-DD",
+            "market": "AH" | "US",
+            "picks": [{"code","name","category","held","market","lines":[..],"announcement": {...|None}}],
+            "skipped": [code...]   # 数据不足被跳过
+        }
+    """
+    held = _held_codes()
+    df, meta = _build_watch_pool()
+    if df is None or df.empty:
+        return {"date": datetime.date.today().isoformat(), "picks": [],
+                "skipped": list(WATCH_LIST.keys()), "meta": meta}
+
+    buy_th = DAILY_PUSH["lishing_buy"]
+    watch_th = DAILY_PUSH["lishing_watch"]
+    add_gap = DAILY_PUSH["add_gap"]
+
+    picks = []
+    skipped = []
+    for _, r in df.iterrows():
+        code = r["code"]
+        market = _market_for_code(code)
+        is_held = code in held
+        cat, _r = _classify(r, is_held, buy_th, watch_th, add_gap)
+        if cat == "不推送":
+            if float(r.get("lishing", 0) or 0) <= 0 or float(r.get("price", 0) or 0) <= 0:
+                skipped.append(code)
+            continue
+        lines = _reason_lines(r, is_held, cat, market, add_gap)
+        ann = None
+        if include_announcements and market == "A":
+            ann = _fetch_announcement(code)
+            if ann:
+                lines.append(_announcement_line(ann))
+        picks.append({
+            "code": code,
+            "name": r.get("name", code),
+            "category": cat,
+            "held": is_held,
+            "market": market,
+            "lines": lines,
+            "announcement": ann,
+        })
+    return {"date": datetime.date.today().isoformat(), "picks": picks,
+            "skipped": skipped, "meta": meta}
+
+
+def _fetch_announcement(code):
+    from modules.data.announcements import latest
+    end = datetime.date.today().isoformat()
+    begin = (datetime.date.today()
+             - datetime.timedelta(days=DAILY_PUSH["announcement_days"])).isoformat()
+    try:
+        return latest(code, begin, end, max_age_days=1)
+    except Exception:
+        return None
+
+
+def _announcement_line(ann):
+    date = ann.get("date", "")
+    title = ann.get("title", "")
+    url = ann.get("url", "")
+    if not title:
+        return "- 最新公告: 数据不足"
+    if url:
+        return f"- 最新公告: {date}《{title}》\n  {url}"
+    return f"- 最新公告: {date}《{title}》（原文链接数据不足）"
+
+
+def _preamble():
+    return ("以价值投资视角看，先问三个问题：生意是否真赚钱、现金是否进得来、"
+            "价格是否留有余地。以下是今日按数据规则筛选的观察清单。")
+
+
+def _footer():
+    return ("内容由本地数据规则生成，仅供个人复盘，不构成投资建议，"
+            "也不代表李嘉诚本人观点。\n"
+            "李嘉诚：先求稳，再求赢；现金与低负债是过冬的棉袄。\n"
+            "芒格：用合理价格买入优秀企业，远胜用便宜价格买入平庸企业。"
+            "反过来想，总是反过来想。")
+
+
+def compose_message(picks_result, market="AH"):
+    """把 picks_result 渲染成推送文案。"""
+    picks = picks_result.get("picks", [])
+    if not picks:
+        return ""
+    head = {"AH": "【A股/港股】", "US": "【美股】"}.get(market, "")
+    lines = [f"{head}今日价值投资选股观察",
+             f"日期: {picks_result.get('date')}",
+             "", _preamble(), ""]
+    for p in picks:
+        lines.append(f"{p['code']} {p['name']} | {p['category']}")
+        lines.append("理由:")
+        lines.extend(p["lines"])
+        lines.append("")
+    lines.append(_footer())
+    return "\n".join(lines)

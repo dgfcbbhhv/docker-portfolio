@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.pyo
+.git/
+data/
+notes/
+.DS_Store
+.venv/
+backups/
+tests/
+.github/

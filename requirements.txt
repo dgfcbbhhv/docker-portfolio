@@ -1,0 +1,13 @@
+streamlit>=1.40.0
+pandas>=2.2.0
+numpy>=1.26.0
+scipy>=1.13.0
+akshare>=1.14.0
+pytest>=8.0.0
+duckdb>=0.10.0
+baostock>=0.8.8
+yfinance>=0.2.40
+longbridge>=4.4.0
+openpyxl>=3.1.0
+pyarrow>=15.0.0
+streamlit-echarts>=0.4.0
