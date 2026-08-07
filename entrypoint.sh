@@ -21,6 +21,11 @@ fi
 
 # bind-mount 的 data/notes 属宿主机目录，降权前先交给 app 用户，保证写缓存/日志
 chown -R app:app /app/data /app/notes 2>/dev/null || true
+# modules/data 内的运行时状态文件(data_status.json)亦需 app 可写
+chown -R app:app /app/modules/data 2>/dev/null || true
+# 非 root 下 HOME 需可写：Streamlit 写安装指标到 $HOME/.streamlit，默认 /root 不可写
+export HOME=/home/app
+mkdir -p "$HOME" && chown -R app:app "$HOME" 2>/dev/null || true
 
 # MODE=alert-worker：仅启动 alert_worker（前台），供独立容器使用
 if [ "$MODE" = "alert-worker" ]; then
