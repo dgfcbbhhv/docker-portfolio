@@ -10,7 +10,7 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 from modules.config import WATCH_LIST
-from modules.paper_trader import (
+from modules.paper_common import (  # noqa: F401
     A_LIMIT_BSE_REIT,
     A_LIMIT_CHINEXT,
     A_LIMIT_DEFAULT,

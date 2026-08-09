@@ -39,47 +39,28 @@ from modules.data.cache import retry
 from modules.kelly import run as kelly_run
 from modules.lishing import calc as lishing_calc
 from modules.signals import evaluate_buy, evaluate_growth, evaluate_sell
-
-PAPER_DIR = os.path.join(os.path.dirname(__file__), "..", "data", "paper")
-SNAPSHOT_FILE = os.path.join(PAPER_DIR, "signal_snapshots.json")
-PORTFOLIO_FILE = os.path.join(PAPER_DIR, "paper_portfolio.json")
-VALIDATION_FILE = os.path.join(PAPER_DIR, "signal_validation.json")
-NAV_FILE = os.path.join(PAPER_DIR, "paper_nav.json")
-
-VIRTUAL_CAPITAL = 1_000_000.0
-MAX_POSITION_PCT = 30.0
-SIGNAL_BUY_THRESHOLD = 65
-SIGNAL_SELL_THRESHOLD = 55
-SIGNAL_HOLD_THRESHOLD = 45
-
-# A 股成交假设：T+1 开盘成交、涨停/跌停/停牌限制、费用
-FEE_RATE = 0.001  # 单边费用（佣金+过户费等，可配置）
-STAMP_TAX_RATE = 0.0005  # 卖出印花税
-MIN_LOT = 100
-A_LIMIT_DEFAULT = 0.10
-A_LIMIT_ST = 0.05
-A_LIMIT_CHINEXT = 0.20
-A_LIMIT_BSE_REIT = 0.30
-
-
-def _ensure_dir():
-    os.makedirs(PAPER_DIR, exist_ok=True)
-
-
-def _load_json(path):
-    if os.path.exists(path):
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except (json.JSONDecodeError, OSError):
-            pass
-    return {}
-
-
-def _save_json(path, data):
-    _ensure_dir()
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+from modules.paper_common import (  # noqa: F401
+    A_LIMIT_BSE_REIT,
+    A_LIMIT_CHINEXT,
+    A_LIMIT_DEFAULT,
+    A_LIMIT_ST,
+    FEE_RATE,
+    MAX_POSITION_PCT,
+    MIN_LOT,
+    NAV_FILE,
+    PAPER_DIR,
+    PORTFOLIO_FILE,
+    SIGNAL_BUY_THRESHOLD,
+    SIGNAL_HOLD_THRESHOLD,
+    SIGNAL_SELL_THRESHOLD,
+    SNAPSHOT_FILE,
+    STAMP_TAX_RATE,
+    VALIDATION_FILE,
+    VIRTUAL_CAPITAL,
+    _ensure_dir,
+    _load_json,
+    _save_json,
+)
 
 
 def _market_of(code):
