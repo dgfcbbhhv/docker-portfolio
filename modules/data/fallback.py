@@ -131,6 +131,17 @@ def _lb_spot_df(codes):
     return df
 
 
+def _us_spot_df(codes):
+    """美股行情(腾讯实时优先) → DataFrame, 失败返回 None。"""
+    from .market_us import fetch_us_spot
+    df = fetch_us_spot(codes)
+    if df is None or df.empty:
+        return None
+    df = df.copy()
+    df["_src"] = "tencent_us"
+    return df
+
+
 def fetch_spot_with_fallback(codes, mkt="A"):
     """
     多级降级获取行情数据
@@ -167,7 +178,7 @@ def fetch_spot_with_fallback(codes, mkt="A"):
     elif mkt == "US":
         sources = [
             ("longbridge", lambda: _lb_spot_df(codes), 1),
-            ("tencent_us", lambda: None, 5),
+            ("tencent_us", lambda: _us_spot_df(codes), 5),
         ]
     else:
         raise ValueError(f"未知市场: {mkt}")
