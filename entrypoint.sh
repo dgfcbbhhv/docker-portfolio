@@ -23,6 +23,8 @@ fi
 chown -R app:app /app/data /app/notes 2>/dev/null || true
 # modules/data 内的运行时状态文件(data_status.json)亦需 app 可写
 chown -R app:app /app/modules/data 2>/dev/null || true
+# 长桥 token 自动续期需写回 .env (否则重启后仍读旧 token)
+chown -R app:app /app/.env 2>/dev/null || true
 # 非 root 下 HOME 需可写：Streamlit 写安装指标到 $HOME/.streamlit，默认 /root 不可写
 export HOME=/home/app
 mkdir -p "$HOME" && chown -R app:app "$HOME" 2>/dev/null || true
