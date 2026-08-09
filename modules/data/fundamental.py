@@ -146,7 +146,7 @@ def _num(info, *keys):
 
 
 def _fetch_one_fin_us(code):
-    """美股单只基本面：yfinance info + cashflow。
+    """美股单只基本面：yfinance info + cashflow，失败降级 FMP。
 
     返回 (code, {roe, eps, bps, debt, pe, pb, ocf_ratio, div_years, total_shares})。
     任一字段缺失保持 None（上层 _fmt 会写"数据不足"），不推断。
@@ -156,48 +156,60 @@ def _fetch_one_fin_us(code):
             "total_shares": None}
     from modules.data.market_us import _get_yf
     yf = _get_yf()
-    if not yf:
-        return code, info
-    ticker = yf.Ticker(code)
-    ti = {}
-    # Yahoo 对数据中心 IP 常限流（YFRateLimitError）。此处快速重试 1 次即可：
-    # 失败的请求不值得拖慢每次刷新，靠 1h 缓存 + 后续刷新自然解限后再取。
-    for _attempt in range(2):
-        try:
-            ti = ticker.info or {}
-            break
-        except Exception:
-            if _attempt == 0:
-                import time as _time
-                _time.sleep(1.0)
-    if not ti:
-        return code, info
-    info["pe"] = _num(ti, "trailingPE") or _num(ti, "forwardPE")
-    info["pb"] = _num(ti, "priceToBook")
-    roe = _num(ti, "returnOnEquity")
-    if roe is not None:
-        info["roe"] = round(roe * 100, 2)
-    info["eps"] = _num(ti, "trailingEps")
-    info["bps"] = _num(ti, "bookValue")
-    info["total_shares"] = _num(ti, "sharesOutstanding")
-    # 资产负债率：优先 D/E 换算 D/(D+E)；缺则留空
-    de = _num(ti, "debtToEquity")
-    if de is not None:
-        de_pct = de if abs(de) > 1 else de * 100
-        info["debt"] = round(de_pct / (de_pct + 100.0) * 100.0, 2) if (de_pct + 100.0) > 0 else None
-    # 经营现金流 / 净利润
-    try:
-        cf = ticker.cashflow
-        if cf is not None and not cf.empty:
+    if yf:
+        ticker = yf.Ticker(code)
+        ti = {}
+        # Yahoo 对数据中心 IP 常限流（YFRateLimitError）。此处快速重试 1 次即可：
+        # 失败的请求不值得拖慢每次刷新，靠 1h 缓存 + 后续刷新自然解限后再取。
+        for _attempt in range(2):
             try:
-                ocf = cf.loc["Operating Cash Flow"].iloc[0]
-                ni = cf.loc["Net Income"].iloc[0]
-                if ocf is not None and ni and float(ni) != 0:
-                    info["ocf_ratio"] = round(float(ocf) / float(ni) * 100.0, 1)
-            except (KeyError, IndexError, TypeError, ValueError):
-                pass
+                ti = ticker.info or {}
+                break
+            except Exception:
+                if _attempt == 0:
+                    import time as _time
+                    _time.sleep(1.0)
+        if ti:
+            info["pe"] = _num(ti, "trailingPE") or _num(ti, "forwardPE")
+            info["pb"] = _num(ti, "priceToBook")
+            roe = _num(ti, "returnOnEquity")
+            if roe is not None:
+                info["roe"] = round(roe * 100, 2)
+            info["eps"] = _num(ti, "trailingEps")
+            info["bps"] = _num(ti, "bookValue")
+            info["total_shares"] = _num(ti, "sharesOutstanding")
+            # 资产负债率：优先 D/E 换算 D/(D+E)；缺则留空
+            de = _num(ti, "debtToEquity")
+            if de is not None:
+                de_pct = de if abs(de) > 1 else de * 100
+                info["debt"] = round(de_pct / (de_pct + 100.0) * 100.0, 2) if (de_pct + 100.0) > 0 else None
+            # 经营现金流 / 净利润
+            try:
+                cf = ticker.cashflow
+                if cf is not None and not cf.empty:
+                    try:
+                        ocf = cf.loc["Operating Cash Flow"].iloc[0]
+                        ni = cf.loc["Net Income"].iloc[0]
+                        if ocf is not None and ni and float(ni) != 0:
+                            info["ocf_ratio"] = round(float(ocf) / float(ni) * 100.0, 1)
+                    except (KeyError, IndexError, TypeError, ValueError):
+                        pass
+            except Exception as _e:
+                logger.warning(f"[{__name__}] %s", _e, exc_info=True)
+            return code, info
+        # yfinance 被限流(ti 为空)或现金流失败 → 降级 FMP
+    try:
+        from .fmp import fetch_us_finance
+        fin = fetch_us_finance(code)
+        for k in ("roe", "eps", "bps", "debt", "pe", "pb", "ocf_ratio", "total_shares"):
+            if fin.get(k) is not None:
+                info[k] = fin[k]
+        if info.get("pe") or info.get("roe") or info.get("pb"):
+            logger.info("[%s] 美股基本面降级 FMP (%s)", code,
+                        fin.get("_source", "fmp"))
+            return code, info
     except Exception as _e:
-        logger.warning(f"[{__name__}] %s", _e, exc_info=True)
+        logger.warning(f"[{__name__}] FMP 降级失败 {code}: %s", _e, exc_info=True)
     return code, info
 
 

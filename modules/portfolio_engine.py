@@ -226,6 +226,7 @@ def build_rows(portfolio, fins, divs, vols, spot, label,
             "pb": s.get("pb") if pd.notna(s.get("pb")) else fi.get("pb"),
             "dy": dy_ttm, "dy_ttm": dy_ttm, "dy_lfy": dy_lfy, "mcap": mcap_val,
             "roe": fi.get("roe"), "vol": round(vol * 100, 1),
+            "debt": fi.get("debt"), "ocf_ratio": fi.get("ocf_ratio"),
             "lishing": ls["total"], "lishing_flags": "; ".join(ls["flags"]),
             "lishing_rpt": ls["use_rpt"], "growth_factors": growth_factors,
             "earn_np_yoy": ear.get("np_yoy"), "earn_rev_yoy": ear.get("rev_yoy"),
@@ -299,7 +300,7 @@ def build_portfolio_df(cfg=None, portfolio_map=None):
     from modules.config import (MANUAL_DIV_YIELDS, MANUAL_PRICES, MANUAL_US_GROWTH,
                                 FRAC, MAXPOS, MAX_TOTAL)
     from modules.data.market import fetch_spot_a, fetch_spot_hk, fetch_vols
-    from modules.data.fundamental import fetch_fins, fetch_divs, fetch_fins_hk, fetch_divs_hk, fetch_divs_us, fetch_divs_reit
+    from modules.data.fundamental import fetch_fins, fetch_divs, fetch_fins_hk, fetch_divs_hk, fetch_divs_us, fetch_divs_reit, fetch_fins_us
     from modules.earnings import fetch_earnings
     from modules.data.market_us import fetch_us_spot
     from modules.data.fund import fetch_market_prices
@@ -330,6 +331,7 @@ def build_portfolio_df(cfg=None, portfolio_map=None):
         f_vols_hk = pool.submit(fetch_vols, chk, "H")
         f_spot_us = pool.submit(fetch_us_spot, list(PORT_US.keys()))
         f_divs_us = pool.submit(fetch_divs_us, list(PORT_US.keys()))
+        f_fins_us = pool.submit(fetch_fins_us, list(PORT_US.keys()))
         sa = f_spot_a.result()
         fa = f_fins.result()
         ea = f_earn.result()
@@ -341,6 +343,7 @@ def build_portfolio_df(cfg=None, portfolio_map=None):
         vh = f_vols_hk.result()
         su = f_spot_us.result()
         du = f_divs_us.result()
+        fu = f_fins_us.result()
 
     meta["spot_a"] = not sa.empty
     meta["spot_hk"] = not sh.empty
@@ -355,7 +358,7 @@ def build_portfolio_df(cfg=None, portfolio_map=None):
                            MANUAL_DIV_YIELDS, MANUAL_PRICES, MANUAL_US_GROWTH,
                            FRAC, MAXPOS)
     if not su.empty:
-        rows += build_rows(PORT_US, {}, du, {}, su, "美股",
+        rows += build_rows(PORT_US, fu, du, {}, su, "美股",
                            MANUAL_DIV_YIELDS, MANUAL_PRICES, MANUAL_US_GROWTH,
                            FRAC, MAXPOS)
 

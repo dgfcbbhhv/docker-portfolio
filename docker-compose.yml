@@ -19,6 +19,7 @@ x-alert-env: &alert-env
   LONGBRIDGE_ACCESS_TOKEN: ${LONGBRIDGE_ACCESS_TOKEN:-}
   LONGBRIDGE_REGION: ${LONGBRIDGE_REGION:-cn}
   LONGBRIDGE_TOKEN_REFRESHED: ${LONGBRIDGE_TOKEN_REFRESHED:-}
+  FMP_API_KEY: ${FMP_API_KEY:-}
 
 x-app-volumes: &app-volumes
   - ./data:/app/data
