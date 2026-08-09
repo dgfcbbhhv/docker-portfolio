@@ -1,13 +1,14 @@
 # market data utilities
+import datetime
 import logging
+import re
+import urllib.request
 
-import datetime, re, urllib.request
+import akshare as ak
+import numpy as np
+import pandas as pd
 
-import numpy as np, pandas as pd, akshare as ak
-
-from .cache import load, save, retry, validate_spot
-
-
+from .cache import load, retry, save, validate_spot
 
 logger = logging.getLogger(__name__)
 SINA_URL = "https://hq.sinajs.cn/list="
@@ -331,7 +332,7 @@ def _fetch_tx_histories(codes, days=500):
                     results[r[0]] = r[1]
 
             except Exception as _e:
-                logger.warning(f"[{c}] %s", _e, exc_info=True)
+                logger.warning(f"[{futs[f]}] %s", _e, exc_info=True)
 
     return results
 
@@ -342,7 +343,6 @@ def _fetch_sina_all_stocks():
     # market data utilities
 
     import json
-
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     # market data utilities
@@ -477,7 +477,7 @@ def _fetch_spot_tx_fallback(codes=None, min_amount=0):
                 all_quotes.update(f.result())
 
             except Exception as _e:
-                logger.warning(f"[{i}] %s", _e, exc_info=True)
+                logger.warning(f"[{futs[f]}] %s", _e, exc_info=True)
 
     rows = []
 
@@ -519,7 +519,8 @@ def _fetch_ths_one(code):
 
     k = "ths_" + str(code)
 
-    from .cache import load as _load_ths, save as _save_ths
+    from .cache import load as _load_ths
+    from .cache import save as _save_ths
 
     df = _load_ths("fin", k)
 
@@ -733,7 +734,8 @@ def fetch_spot_a(codes):
 
     try:
 
-        from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FutTimeout
+        from concurrent.futures import ThreadPoolExecutor
+        from concurrent.futures import TimeoutError as _FutTimeout
         _ths_pool = ThreadPoolExecutor(max_workers=1)
         try:
             _ths_fut = _ths_pool.submit(_fetch_ths_pe_pb, list(codes))
@@ -799,7 +801,8 @@ def fetch_spot_hk(codes):
 
 def fetch_spot_a_all():
     """full A-share market list"""
-    from .cache import load as _load_f, save as _save_f
+    from .cache import load as _load_f
+    from .cache import save as _save_f
     df = _load_f("spot", "a_all_full")
     if df is not None:
         return df

@@ -25,10 +25,9 @@ if _ROOT not in sys.path:
 logger = logging.getLogger("daily_pusher")
 
 from modules.alerts import AlertSender
-from modules.config import ALERT_CHANNELS, DAILY_PUSH
+from modules.config import ALERT_CHANNELS
 from modules.daily_picks import build_picks, compose_message
 from modules.data.freshness import freshness_issues
-
 
 DATA_DIR = os.path.join(_ROOT, "data")
 CAL_PATH = os.path.join(DATA_DIR, "trading_calendar.json")

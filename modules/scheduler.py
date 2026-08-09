@@ -11,9 +11,9 @@
 - 支持交易时段自动刷新
 """
 import datetime
+import logging
 import threading
 import time
-import logging
 
 logger = logging.getLogger(__name__)
 

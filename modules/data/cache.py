@@ -11,9 +11,16 @@ TTL:
 并发: Semaphore(3) 限制AKShare并发请求数
 超时: 每API调用硬限时 30s, 防死等
 """
-import os, time, datetime, hashlib, random, logging
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+import datetime
+import hashlib
+import logging
+import os
+import random
+import time
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from threading import Semaphore
+
 import pandas as pd
 
 logger = logging.getLogger(__name__)
@@ -21,6 +28,7 @@ logger = logging.getLogger(__name__)
 _DEFAULT_TIMEOUT = 30.0
 
 import requests as _req
+
 _req.adapters.HTTPAdapter.max_retries = 3
 
 _CACHE_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data")

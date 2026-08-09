@@ -1,7 +1,5 @@
 """跨数据源一致性校验（旁路监控，不参与实时渲染链路）。
-import logging
 
-logger = logging.getLogger(__name__)
 用途
 ----
 对同一指标（当前实时价）从两个相互独立的源分别拉取，逐标的比对。
@@ -25,6 +23,10 @@ fallback.py 只在"主源失败时换下一个"，不校验一致性。
     mkts = {"A": [codes...], "HK": [...], "US": [...]}
     report = validate_spot_by_market(mkts)   # -> {"rows": [...], "summary": {...}}
 """
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 import re
 
@@ -139,10 +141,10 @@ def _em_price(codes, hk):
 
     字段码与价格刻度由 modules/data/fields.py 统一登记（A=分/÷100，HK=厘/÷1000）。
     """
-    import urllib.request
     import json
-    from modules.data.fields import (eastmoney_secid, eastmoney_price_scale,
-                                     EASTMONEY)
+    import urllib.request
+
+    from modules.data.fields import EASTMONEY, eastmoney_price_scale, eastmoney_secid
     out = {}
     market = "HK" if hk else "A"
     spec = EASTMONEY[market]["spec"]

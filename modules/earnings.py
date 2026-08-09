@@ -1,7 +1,5 @@
 """盈利趋势分析 — 营收/净利同比、利润率、盈利评级
-import logging
 
-logger = logging.getLogger(__name__)
 数据源: 同花顺 THS 财务摘要(多期, 含同比增长率), 与 fundamental 共用。
 口径:
 - np_yoy/rev_yoy:  最新一期(季报/年报) 净利润/营业总收入 同比
@@ -11,8 +9,14 @@ logger = logging.getLogger(__name__)
 - np_positive_years:最近连续净利正增长的财年数
 - grade/flags:     由 analyze_earnings 从上述字段推导
 """
-import pandas as pd
+import logging
+
+logger = logging.getLogger(__name__)
+
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+import pandas as pd
+
 from .data.cache import load, save
 
 _MAX_WORKERS = 8

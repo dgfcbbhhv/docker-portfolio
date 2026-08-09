@@ -4,14 +4,11 @@
 实现最终多空分数计算 [-100, +100]
 """
 
-import pandas as pd
-import numpy as np
-from typing import Dict, Optional, Tuple
-from concurrent.futures import ThreadPoolExecutor, as_completed
 import logging
+from typing import Dict, Optional, Tuple
 
 from .config import ASIA_MARKETS, SCORE_WEIGHTS, get_score_label
-from .data_fetcher import fetch_market_data, fetch_all_markets
+from .data_fetcher import fetch_market_data
 from .factors import calc_all_factors
 
 logger = logging.getLogger(__name__)

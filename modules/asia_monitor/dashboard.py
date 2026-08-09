@@ -4,19 +4,18 @@ ECharts可视化仪表盘模块
 实现三Tab可视化界面：多空全景、背离散点图、单市场详情
 """
 
-import streamlit as st
+from typing import Dict, List
+
 import pandas as pd
-import numpy as np
-from typing import Dict, List, Optional
-import json
+import streamlit as st
 
 from .config import ASIA_MARKETS, SCORE_RANGES, get_score_label
+from .data_fetcher import clear_cache, get_data_status
 from .scorer import (
-    calculate_all_scores, get_score_summary, 
-    get_market_ranking, calculate_market_score
+    calculate_all_scores,
+    get_market_ranking,
+    get_score_summary,
 )
-from .data_fetcher import get_data_status, clear_cache
-from .factors import calc_all_factors
 
 
 def render_dashboard():

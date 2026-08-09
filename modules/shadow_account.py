@@ -2,16 +2,15 @@
 Shadow Account — 交易行为分析
 基于成本分层买入记录 + 可选卖出记录，分析交易行为特征。
 """
-import logging
 import json
+import logging
 import os
-from datetime import datetime, timedelta
-from collections import defaultdict
+from datetime import datetime
 
 import pandas as pd
 
-from modules.cost_tier import load_all as load_cost_tiers
 from modules.config import WATCH_LIST
+from modules.cost_tier import load_all as load_cost_tiers
 
 logger = logging.getLogger(__name__)
 # 卖出记录存储

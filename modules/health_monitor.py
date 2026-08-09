@@ -1,5 +1,8 @@
+import datetime
 import logging
-import datetime, numpy as np, pandas as pd
+
+import pandas as pd
+
 from .data.cache import retry
 
 logger = logging.getLogger(__name__)

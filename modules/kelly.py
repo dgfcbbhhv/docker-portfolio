@@ -16,7 +16,6 @@ b = 预期回报 / 预期亏损
 - b 基于当前估值修复空间和波动率，未来可能大幅偏离
 - quarter Kelly (0.25) 应对参数误差 + 肥尾 + 持仓相关性
 """
-import math
 
 FRAC = 0.25        # quarter Kelly
 CORR_BASE = 0.75   # 红利策略内部基础相关度

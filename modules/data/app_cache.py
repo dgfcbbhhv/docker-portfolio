@@ -1,19 +1,26 @@
 """Streamlit 数据获取缓存包装（住在数据缝，可被测试触达）。
-import logging
 
-logger = logging.getLogger(__name__)
 原内联于 app.py 顶部，下沉到数据层以提升 locality：
 缓存策略与数据获取同处一层，app 视图只关心取用。
 """
+import logging
+
+logger = logging.getLogger(__name__)
+
 import datetime
 
 import pandas as pd
 import streamlit as st
 
-from modules.data.market import fetch_spot_a, fetch_spot_hk, fetch_vols
 from modules.data.fundamental import (
-    fetch_fins, fetch_fins_hk, fetch_fins_us, fetch_divs, fetch_divs_hk, fetch_divs_us,
+    fetch_divs,
+    fetch_divs_hk,
+    fetch_divs_us,
+    fetch_fins,
+    fetch_fins_hk,
+    fetch_fins_us,
 )
+from modules.data.market import fetch_spot_a, fetch_spot_hk, fetch_vols
 
 
 @st.cache_data(ttl=3600)
@@ -35,8 +42,9 @@ def fetch_hist_em_or_tx_cached(code, start, end):
 @st.cache_data(ttl=86400)
 def fetch_factor_history_cached(code, market):
     """获取因子分析用历史数据 (750天)"""
-    from modules.data.cache import retry
     import akshare as ak
+
+    from modules.data.cache import retry
     end = datetime.date.today().strftime("%Y%m%d")
     start = (datetime.date.today() - datetime.timedelta(days=750)).strftime("%Y%m%d")
     if market == "US":

@@ -6,7 +6,7 @@
 """
 import os
 
-from modules.config import get_config, LAYERS
+from modules.config import LAYERS, get_config
 
 # 各告警渠道依赖的环境变量（密钥经 env 注入，不落盘）
 ENV_CHANNELS = {

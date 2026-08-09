@@ -1,4 +1,6 @@
-import json, os, csv
+import csv
+import json
+import os
 from io import StringIO
 
 from modules.paths import notes_dir

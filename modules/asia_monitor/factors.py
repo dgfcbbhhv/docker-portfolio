@@ -4,10 +4,10 @@
 实现动低背离(Momentum-Valuation Divergence)因子计算
 """
 
-import pandas as pd
-import numpy as np
-from typing import Dict, Optional, Tuple
 import logging
+from typing import Dict
+
+import pandas as pd
 
 from .config import MOMENTUM_WEIGHTS, VALUATION_WEIGHTS
 

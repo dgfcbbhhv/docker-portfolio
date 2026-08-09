@@ -1,7 +1,5 @@
 """A 股券商成交导入与推送关联。
-import logging
 
-logger = logging.getLogger(__name__)
 支持常见券商导出的成交明细表（如 Table_*.xlsx）：
   成交日期, 成交时间, 证券代码, 证券名称, 委托方向, 成交数量, 成交均价,
   成交金额, 佣金, 其他费用, 印花税, 过户费, 资金余额, 股份余额,
@@ -10,6 +8,10 @@ logger = logging.getLogger(__name__)
 导入时归一化为 broker_trades，并按「日期 + 代码」自动关联推送审计中的
 daily_picks push_id，未匹配的可在界面手动关联。
 """
+import logging
+
+logger = logging.getLogger(__name__)
+
 import datetime
 import json
 import os

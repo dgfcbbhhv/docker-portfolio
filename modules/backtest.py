@@ -1,19 +1,25 @@
 """回测引擎 — 三场景 + 幸存者偏差声明
-import logging
 
-logger = logging.getLogger(__name__)
 假设:
 - 回测基于历史后复权数据
 - 未剔除退市股票, 存在幸存者偏差
 - 交易成本: 单边 0.1%
 - 无风险利率: 2.5% (10年国债)
 """
-import datetime, json, urllib.request
+import logging
+
+logger = logging.getLogger(__name__)
+
+import datetime
+import json
+import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+import akshare as ak
 import numpy as np
 import pandas as pd
-import akshare as ak
-from .data.cache import load, save, retry
+
+from .data.cache import load, retry, save
 
 _MAX_WORKERS = 8
 _REQ_TIMEOUT = 180

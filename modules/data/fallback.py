@@ -2,10 +2,12 @@
 参考 EasyXT 的数据源自动降级机制：
 AKShare → 腾讯行情 → Baostock → 东方财富
 """
+import datetime
 import logging
-import datetime, logging
+
 import pandas as pd
-from .cache import load, save, retry
+
+from .cache import retry
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -74,8 +76,10 @@ def _fetch_baostock_spot(codes):
 
 def _fetch_eastmoney_spot(codes):
     """东方财富A股行情兜底。字段码与刻度见 modules/data/fields.py。"""
-    import urllib.request, json
-    from modules.data.fields import EASTMONEY, eastmoney_secid, decode_eastmoney_price
+    import json
+    import urllib.request
+
+    from modules.data.fields import EASTMONEY, decode_eastmoney_price, eastmoney_secid
     spec = EASTMONEY["A"]["spec"]
     try:
         url = "http://push2.eastmoney.com/api/qt/stock/get"
@@ -230,8 +234,7 @@ def fetch_hist_with_fallback(code, start_date, end_date, mkt="A"):
     Returns:
         DataFrame 或 None
     """
-    import akshare as ak
-    from .market import _fetch_tx_histories, _fetch_hist_em_or_tx
+    from .market import _fetch_hist_em_or_tx, _fetch_tx_histories
     
     sources = [
         ("akshare_em", lambda: _fetch_hist_em_or_tx(code, start_date, end_date)),
@@ -289,7 +292,8 @@ def fetch_hist_with_fallback(code, start_date, end_date, mkt="A"):
 def fetch_full_market_with_fallback(amount_min=50_000_000):
     """多级降级获取全市场A股数据"""
     import akshare as ak
-    from .market import _fetch_spot_tx_fallback, _fetch_sina_all_stocks
+
+    from .market import _fetch_spot_tx_fallback
     
     sources = [
         ("akshare_em", lambda: ak.stock_zh_a_spot_em()),

@@ -6,8 +6,8 @@
 - 输出归因报告，回答"你的收益到底靠选股还是靠贝塔挣钱"
 """
 import numpy as np
-import pandas as pd
 from scipy import stats
+
 
 def decompose_stock(returns_df, code):
     r_i = returns_df[code].dropna()

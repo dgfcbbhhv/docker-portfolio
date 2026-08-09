@@ -7,25 +7,18 @@
 
 基础计算委托 modules.risk（与 stress 共用，避免两套实现漂移）。
 """
-import numpy as np
-import pandas as pd
 
 from modules.risk import (
     CORR_BASE,
     HORIZON_DAYS,
     N_SIMS,
     PLACEHOLDER_VOL,
-    industry_of,
-    single_day_loss,
     industry_collapse_loss,
-    vol_is_usable,
+    industry_of,
     monte_carlo_p95_drawdown,
+    single_day_loss,
+    vol_is_usable,
 )
-
-CORR_BASE = CORR_BASE
-HORIZON_DAYS = HORIZON_DAYS
-N_SIMS = N_SIMS
-PLACEHOLDER_VOL = PLACEHOLDER_VOL
 
 
 def _rows_for_layer(df, layer):

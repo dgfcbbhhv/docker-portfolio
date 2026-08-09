@@ -3,11 +3,11 @@
 """
 导出模块：Excel 报告导出
 """
-import logging
-import os
 import datetime
-import pandas as pd
+import logging
 from pathlib import Path
+
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 EXPORT_DIR = Path("data/exports")
@@ -111,7 +111,7 @@ def _export_cost_tier(cost_data: dict, writer: pd.ExcelWriter):
 
 def _export_kelly_config(writer: pd.ExcelWriter):
     """Kelly配置 Sheet"""
-    from modules.kelly import FRAC, MAXPOS
+    from modules.kelly import MAXPOS
     config = pd.DataFrame([
         {"参数": "Kelly分数阈值", "值": 1.0, "说明": "分数低于此值时不给仓位"},
         {"参数": "最大单票仓位%", "值": MAXPOS * 100, "说明": "单票上限"},

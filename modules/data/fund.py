@@ -1,9 +1,10 @@
 """基金/REIT/ETF 数据模块"""
 import logging
-import time
-import pandas as pd
+
 import akshare as ak
-from .cache import retry, load, save, logger
+import pandas as pd
+
+from .cache import load, logger, retry, save
 
 logger = logging.getLogger(__name__)
 REIT_TYPES = {

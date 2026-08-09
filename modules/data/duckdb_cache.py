@@ -2,7 +2,8 @@
 参考 EasyXT 的 DuckDB 数据存储方案，大幅提升全市场扫描速度（约10倍）
 """
 import logging
-import os, logging
+import os
+
 import pandas as pd
 
 logger = logging.getLogger(__name__)

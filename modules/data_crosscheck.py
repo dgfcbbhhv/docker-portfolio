@@ -71,7 +71,7 @@ def _mark_done(day, summary):
 
 
 def target_codes():
-    from modules.config import (WATCH_LIST, PORT_A, PORT_HK, PORT_US, PORT_REIT)
+    from modules.config import PORT_A, PORT_HK, PORT_REIT, PORT_US, WATCH_LIST
     groups = {"A": [], "HK": [], "US": []}
     seen = {"A": set(), "HK": set(), "US": set()}
 
@@ -98,9 +98,10 @@ def target_codes():
 def _fetch_all(mkt, codes):
     """并发拉各源报价, 返回 {source: {code: price}}。失败源为空 dict。"""
     import concurrent.futures as cf
+
     from modules.data import longbridge as _lb
-    from modules.data.market import _fetch_sina, _fetch_sina_hk, _fetch_tx_quotes
     from modules.data.fallback import _fetch_eastmoney_spot
+    from modules.data.market import _fetch_sina, _fetch_sina_hk, _fetch_tx_quotes
 
     def _l():
         return {r["c"]: float(r["price"]) for r in _lb.fetch_spot(codes) if r.get("price")}
@@ -195,7 +196,6 @@ def build_report(day=None, threshold_pct=DEFAULT_PCT):
         lines.append("|" + "---|" * len(hdr))
         for code in codes:
             pri = _primary(by, code)
-            cells = []
             row = []
             for k, name in MKT_SOURCES[mkt]:
                 v = by.get(k, {}).get(code)
@@ -234,9 +234,9 @@ def _fetch_market(mkt, codes):
 
 
 def run(day=None, dry_run=False, threshold_pct=DEFAULT_PCT):
-    from modules.daily_pusher import _is_trading_day_ah
     from modules.alerts import AlertSender
     from modules.config import ALERT_CHANNELS
+    from modules.daily_pusher import _is_trading_day_ah
 
     today = day or datetime.date.today()
     date_s = today.isoformat()

@@ -5,8 +5,8 @@
 本模块把所有 getaddrinfo 结果强制为 IPv4 优先（AF_INET），
 调用 enable_ipv4_preference() 即全局生效，覆盖 urllib/requests/urllib3/socket。
 """
-import socket
 import _socket
+import socket
 
 # 东方财富 push2 系域名的可用 IPv4 网关（宽带对 push2 HTTPS 做 TLS reset，
 # 但该 IP 的 HTTP 通道对所有 push2 变体（如 33.push2his）均 200）

@@ -3,9 +3,7 @@ Paper Trader — 模拟盘验证引擎
 =================================
 用真实行情数据 (东方财富 AKShare) 驱动信号快照 + 虚拟组合执行，
 验证系统推送的买卖信号是否真实可信。
-import logging
 
-logger = logging.getLogger(__name__)
 核心流程:
   1. 每日快照: 对所有持仓生成信号评分快照 (buy/sell/hold + score)
   2. 虚拟执行: 按 Kelly 建议仓位 + 信号强弱 模拟下单
@@ -16,21 +14,31 @@ logger = logging.getLogger(__name__)
   所有行情数据来自东方财富 (via AKShare stock_zh_a_hist / stock_hk_hist)，
   并显式标记 data_source, is_mock 字段, 禁止使用 mock 数据。
 """
+import logging
 
+logger = logging.getLogger(__name__)
+
+
+import datetime
 import json
 import os
 import time
-import datetime
 from collections import defaultdict
 
 import numpy as np
 import pandas as pd
 
-from modules.data.cache import load, save, retry
+from modules.config import (
+    MANUAL_US_GROWTH,
+    PORT_A,
+    PORT_HK,
+    PORT_US,
+    WATCH_LIST,
+)
+from modules.data.cache import retry
 from modules.kelly import run as kelly_run
-from modules.signals import evaluate_buy, evaluate_sell, evaluate_growth
-from modules.config import PORT_A, PORT_HK, PORT_US, PORT_REIT, WATCH_LIST, MANUAL_US_GROWTH
 from modules.lishing import calc as lishing_calc
+from modules.signals import evaluate_buy, evaluate_growth, evaluate_sell
 
 PAPER_DIR = os.path.join(os.path.dirname(__file__), "..", "data", "paper")
 SNAPSHOT_FILE = os.path.join(PAPER_DIR, "signal_snapshots.json")
@@ -393,9 +401,9 @@ def capture_daily_snapshot():
     all_codes = list(PORT_A.keys()) + list(PORT_HK.keys()) + list(PORT_US.keys())
     results = []
 
-    from modules.data.market import fetch_vols, fetch_price_percentiles
+    from modules.data.fundamental import fetch_divs_us, fetch_fins, fetch_fins_hk, fetch_fins_us
+    from modules.data.market import fetch_price_percentiles, fetch_vols
     from modules.data.market_us import fetch_us_spot
-    from modules.data.fundamental import fetch_fins, fetch_fins_hk, fetch_divs_us
 
     logger.info(f"[PaperTrader] 拉取 {len(all_codes)} 只标的真实数据 (东方财富)...")
 
@@ -405,7 +413,7 @@ def capture_daily_snapshot():
 
     fins_a = fetch_fins(ca) if ca else {}
     fins_hk = fetch_fins_hk(chk) if chk else {}
-    fins_us = {}
+    fins_us = fetch_fins_us(cus) if cus else {}
 
     vols_a = fetch_vols(ca, "A") if ca else {}
     vols_hk = fetch_vols(chk, "H") if chk else {}
@@ -423,7 +431,7 @@ def capture_daily_snapshot():
     for c in chk:
         all_codes_with_mkt.append((c, "HK", fins_hk.get(c, {}), vols_hk.get(c, 0.2)))
     for c in cus:
-        all_codes_with_mkt.append((c, "US", {}, vols_us.get(c, 0.2)))
+        all_codes_with_mkt.append((c, "US", fins_us.get(c, {}), vols_us.get(c, 0.2)))
 
     codes_a = [c for c, m, _, _ in all_codes_with_mkt if m == "A"]
     codes_hk = [c for c, m, _, _ in all_codes_with_mkt if m == "HK"]
@@ -469,11 +477,18 @@ def capture_daily_snapshot():
 
 
 
-from modules.paper_executor import _get_paper_portfolio, _fee_rate, _stamp_tax_rate, _a_limit_ratio, _a_limit_prices, _fetch_a_bar_for_date, _target_buy_shares, _create_pending_orders, _execute_pending_orders, _fetch_execution_bars
-from modules.paper_executor import _get_paper_portfolio, _fee_rate, _stamp_tax_rate, _a_limit_ratio, _a_limit_prices, _fetch_a_bar_for_date, _target_buy_shares, _create_pending_orders, _execute_pending_orders, _fetch_execution_bars
-
-
-from modules.paper_executor import _get_paper_portfolio, _fee_rate, _stamp_tax_rate, _a_limit_ratio, _a_limit_prices, _fetch_a_bar_for_date, _target_buy_shares, _create_pending_orders, _execute_pending_orders, _fetch_execution_bars
+from modules.paper_executor import (  # noqa: F401
+    _fee_rate,
+    _stamp_tax_rate,
+    _a_limit_ratio,
+    _a_limit_prices,
+    _create_pending_orders,
+    _execute_pending_orders,
+    _fetch_execution_bars,
+    _get_paper_portfolio,
+    _fetch_a_bar_for_date,
+    _target_buy_shares,
+)
 
 
 def update_paper_portfolio(snapshots=None, execution_date=None):

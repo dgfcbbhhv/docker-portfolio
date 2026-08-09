@@ -1,14 +1,14 @@
 """纯计算引擎：不依赖 Streamlit，供 App 与后台预警进程共用同一套口径。"""
 import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 import pandas as pd
 
-from modules.kelly import run as kelly_run, apply_portfolio_cap
+from modules.kelly import apply_portfolio_cap
+from modules.kelly import run as kelly_run
 from modules.lishing import calc as lishing_calc
 from modules.signals import evaluate_growth
-
 
 logger = logging.getLogger(__name__)
 def _default_factor_multiplier(code):
@@ -186,6 +186,19 @@ def build_rows(portfolio, fins, divs, vols, spot, label,
                     pe_pctl = 90
             elif gr_fb:
                 pe_pctl = gr_fb.get("pe_pctl")
+            if pb_val and not pd.isna(pb_val):
+                if pb_val < 2:
+                    pb_pctl = 20
+                elif pb_val < 4:
+                    pb_pctl = 40
+                elif pb_val < 7:
+                    pb_pctl = 60
+                elif pb_val < 12:
+                    pb_pctl = 75
+                else:
+                    pb_pctl = 90
+            elif gr_fb:
+                pb_pctl = gr_fb.get("pb_pctl")
             if price_above_ma20 is None and gr_fb:
                 price_above_ma20 = gr_fb.get("price_above_ma20")
             if ma20_above_ma60 is None and gr_fb:
@@ -297,13 +310,26 @@ def build_portfolio_df(cfg=None, portfolio_map=None):
     Returns:
         (DataFrame, meta)  meta 包含各市场是否取到数据。
     """
-    from modules.config import (MANUAL_DIV_YIELDS, MANUAL_PRICES, MANUAL_US_GROWTH,
-                                FRAC, MAXPOS, MAX_TOTAL)
-    from modules.data.market import fetch_spot_a, fetch_spot_hk, fetch_vols
-    from modules.data.fundamental import fetch_fins, fetch_divs, fetch_fins_hk, fetch_divs_hk, fetch_divs_us, fetch_divs_reit, fetch_fins_us
-    from modules.earnings import fetch_earnings
-    from modules.data.market_us import fetch_us_spot
+    from modules.config import (
+        FRAC,
+        MANUAL_DIV_YIELDS,
+        MANUAL_PRICES,
+        MANUAL_US_GROWTH,
+        MAXPOS,
+    )
     from modules.data.fund import fetch_market_prices
+    from modules.data.fundamental import (
+        fetch_divs,
+        fetch_divs_hk,
+        fetch_divs_reit,
+        fetch_divs_us,
+        fetch_fins,
+        fetch_fins_hk,
+        fetch_fins_us,
+    )
+    from modules.data.market import fetch_spot_a, fetch_spot_hk, fetch_vols
+    from modules.data.market_us import fetch_us_spot
+    from modules.earnings import fetch_earnings
 
     if portfolio_map is not None:
         PORT_A = portfolio_map.get("A", {})

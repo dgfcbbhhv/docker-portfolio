@@ -6,6 +6,7 @@ yfinance 懒加载——Docker 未安装时自动降级
 """
 import datetime
 import logging
+
 import pandas as pd
 
 logger = logging.getLogger(__name__)
@@ -32,7 +33,9 @@ def _tx_us_quote(code):
     """腾讯美股实时报价 → 字段列表 或 None
     field[0]=状态, [1]=名称, [3]=最新价, [4]=昨收, [39]=PE, [52]=股息率%, [66]=每股年分红
     """
-    import re, requests
+    import re
+
+    import requests
     try:
         r = requests.get(f"http://qt.gtimg.cn/q=us{code}", timeout=10,
                          headers={"User-Agent": "Mozilla/5.0"})
@@ -52,7 +55,8 @@ def _tx_us_kline(code, start=None, end=None):
 
     返回 DataFrame[date,open,high,low,close,volume] 或 None。
     """
-    import requests, json
+
+    import requests
     try:
         if start is None or end is None:
             return None

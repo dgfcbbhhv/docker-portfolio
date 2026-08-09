@@ -6,9 +6,10 @@ token 保鲜：距上次刷新 ≥60 天即调用 refresh_access_token 换取新
 写回 .env 与 os.environ，使凭证全自动续期、无需人工干预。
 SDK 未安装/凭据缺失/鉴权失败时全部降级返回空结果，绝不阻塞主流程。
 """
-import os
 import datetime
 import logging
+import os
+
 import pandas as pd
 
 logger = logging.getLogger(__name__)
@@ -85,7 +86,6 @@ def _persist_env(new_token, refreshed):
         return
     try:
         lines = []
-        import codecs
         for raw in open(path, "rb").read().decode("utf-8-sig").splitlines():
             lines.append(raw.rstrip("\r\n"))
         out = []
@@ -213,7 +213,8 @@ def fetch_hist(code, start=None, end=None, days=750):
         return None
     try:
         import datetime as _dt
-        from longbridge.openapi import QuoteContext, Period, AdjustType
+
+        from longbridge.openapi import AdjustType, Period, QuoteContext
         if start is None:
             end_d = _dt.date.today()
             start_d = end_d - _dt.timedelta(days=days)

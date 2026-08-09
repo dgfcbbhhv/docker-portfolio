@@ -1,7 +1,5 @@
 """真实持仓接入层。
-import logging
 
-logger = logging.getLogger(__name__)
 口径
 ----
 - PORT_A/PORT_HK/PORT_US/PORT_REIT 里的 `ratio` 是**目标配置权重**，不是真实持仓。
@@ -12,6 +10,10 @@ logger = logging.getLogger(__name__)
 后续要接券商真实持仓（broker_import/execution_log）时，改本文件内部实现即可，
 对外接口（get_actual_holdings / market_value_ratio）保持不变。
 """
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 
 def get_actual_holdings():
@@ -34,7 +36,7 @@ def get_actual_holdings():
     except Exception as _e:
         logger.warning(f"[{__name__}] %s", _e, exc_info=True)
     try:
-        from modules.paper_trader import _get_paper_portfolio, VIRTUAL_CAPITAL
+        from modules.paper_trader import VIRTUAL_CAPITAL, _get_paper_portfolio
         pf = _get_paper_portfolio() or {}
         positions = pf.get("positions") or {}
         if not positions:

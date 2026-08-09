@@ -1,10 +1,12 @@
 """财务/分红/负债/现金流/审计 — 同花顺THS主数据源"""
 import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import pandas as pd
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 import akshare as ak
-from .cache import load, save, retry
+import pandas as pd
+
+from .cache import load, retry, save
 
 logger = logging.getLogger(__name__)
 _MAX_WORKERS = 8
@@ -269,7 +271,9 @@ def _tx_us_quote(code):
     URL: http://qt.gtimg.cn/q=us{CODE}
     field[0]=状态, [1]=名称, [3]=最新价, [4]=昨收, [52]=股息率%, [66]=每股年分红
     """
-    import re, requests
+    import re
+
+    import requests
     try:
         r = requests.get(f"http://qt.gtimg.cn/q=us{code}", timeout=10,
                          headers={"User-Agent": "Mozilla/5.0"})
@@ -374,7 +378,7 @@ def _fetch_one_fin_hk(c):
             return c, info_cached
 
     info = {"roe": None, "eps": None, "bps": None, "debt": None, "pe": None, "pb": None,
-            "ocf_ratio": None, "audit": True, "div_years": 0, "total_shares": None}
+            "ocf_ratio": None, "audit": True, "div_years": 0, "total_shares": None, "div_ttm": None}
 
     try:
         d = retry(lambda: ak.stock_hk_financial_indicator_em(symbol=c))
@@ -388,7 +392,7 @@ def _fetch_one_fin_hk(c):
             info["ocf_ratio"] = _pct(r.get("每股经营现金流(元)"))
             info["total_shares"] = _pct(r.get("已发行股本(股)"))
             # 股息: 从财务指标里拿每股股息TTM
-            div_ttm = _pct(r.get("每股股息TTM(港元)"))
+            info["div_ttm"] = _pct(r.get("每股股息TTM(港元)"))
     except Exception as _e:
         logger.warning(f"[{__name__}] %s", _e, exc_info=True)
 

@@ -19,17 +19,27 @@ if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
 from modules.netfix import enable_ipv4_preference
+
 enable_ipv4_preference()
 from modules.emfix import enable_em_http
+
 enable_em_http()
 from modules.alerts import AlertSender, check_alerts, log_alerts
-from modules.config import (ALERT_CHANNELS, ALERT_COOLDOWN_MINUTES, ALERT_RETRIES,
-                            ALERT_THRESHOLDS, PORT_A, PORT_HK, PORT_REIT, PORT_US,
-                            get_config)
+from modules.config import (
+    ALERT_CHANNELS,
+    ALERT_COOLDOWN_MINUTES,
+    ALERT_RETRIES,
+    ALERT_THRESHOLDS,
+    PORT_A,
+    PORT_HK,
+    PORT_REIT,
+    PORT_US,
+    get_config,
+)
+from modules.data.cache import active_keys, gc_orphans, gc_stale
+from modules.data.freshness import freshness_issues
 from modules.portfolio_engine import alert_snapshot, build_portfolio_df
 from modules.scheduler import Scheduler, is_trading_hours
-from modules.data.freshness import freshness_issues
-from modules.data.cache import gc_stale, gc_orphans, active_keys
 
 DATA_DIR = os.path.join(_ROOT, "data")
 STATE_PATH = os.path.join(DATA_DIR, "alert_worker_state.json")
@@ -207,8 +217,8 @@ class AlertWorker:
             self.run_cycle()
 
     def _push_daily_picks(self, market):
-        from modules.daily_pusher import build_and_send
         from modules.config import DAILY_PUSH
+        from modules.daily_pusher import build_and_send
         if not DAILY_PUSH.get("enabled"):
             return
         try:
@@ -243,7 +253,7 @@ class AlertWorker:
             logger.exception("paper daily check failed: %s", e)
 
     def run_forever(self):
-        from modules.config import DAILY_PUSH, CROSSCHECK
+        from modules.config import CROSSCHECK, DAILY_PUSH
         scheduler = Scheduler()
         scheduler.add_task("refresh_and_check", self._refresh_task, 60,
                            run_immediately=True)

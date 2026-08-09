@@ -1,17 +1,19 @@
 """
 买卖信号引擎 v3 — 加权评分 + 多级信号 + 可读说明 (优化版)
-import logging
 
-logger = logging.getLogger(__name__)
 优化点:
 1. 提取公共评分函数，减少重复代码
 2. 使用列表驱动替代多重if-else
 3. 添加缓存机制
 4. 改进代码可读性
 """
+import logging
+
+logger = logging.getLogger(__name__)
+
+import datetime
 import json
 import os
-import datetime
 
 NOTES_DIR = os.path.join(os.path.dirname(__file__), "..", "notes")
 HISTORY_FILE = os.path.join(NOTES_DIR, "_score_history.json")

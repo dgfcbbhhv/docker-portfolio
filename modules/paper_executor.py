@@ -2,24 +2,31 @@
 Paper Executor - 组合状态 & 订单执行引擎
 从 paper_trader.py 拆分，处理虚拟组合持仓、订单创建、订单执行
 """
-import json
-import os
 import datetime
-from collections import defaultdict
-import numpy as np
-import pandas as pd
 import logging
+
+import pandas as pd
+
 logger = logging.getLogger(__name__)
 
+from modules.config import WATCH_LIST
 from modules.paper_trader import (
-    _load_json, _save_json, _ensure_dir,
-    PAPER_DIR, PORTFOLIO_FILE, VIRTUAL_CAPITAL,
-    MAX_POSITION_PCT, SIGNAL_BUY_THRESHOLD, SIGNAL_SELL_THRESHOLD, SIGNAL_HOLD_THRESHOLD,
-    FEE_RATE, STAMP_TAX_RATE, MIN_LOT,
-    A_LIMIT_DEFAULT, A_LIMIT_ST, A_LIMIT_CHINEXT, A_LIMIT_BSE_REIT,
-    _fetch_real_price, _fetch_hist_real,
+    A_LIMIT_BSE_REIT,
+    A_LIMIT_CHINEXT,
+    A_LIMIT_DEFAULT,
+    A_LIMIT_ST,
+    FEE_RATE,
+    MAX_POSITION_PCT,
+    MIN_LOT,
+    PORTFOLIO_FILE,
+    SIGNAL_BUY_THRESHOLD,
+    SIGNAL_SELL_THRESHOLD,
+    STAMP_TAX_RATE,
+    VIRTUAL_CAPITAL,
+    _load_json,
+    _save_json,
 )
-from modules.config import get_config, WATCH_LIST
+
 
 def _get_paper_portfolio():
     """获取当前虚拟组合状态。"""

@@ -6,7 +6,7 @@
 - 质量类：alpha101
 """
 import numpy as np
-import pandas as pd
+
 
 class FactorCalculator:
     def __init__(self, df):

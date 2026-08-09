@@ -7,6 +7,7 @@ stress（黑天鹅压力）与 layer_risk（分层回撤验收）共用本模块
 避免两套同名实现漂移。
 """
 import numpy as np
+
 np.random.seed(42)  # deterministic results
 
 INDUSTRY = {

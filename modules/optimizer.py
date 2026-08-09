@@ -10,8 +10,8 @@ logger = logging.getLogger(__name__)
 - 收益率假设为正态分布, 实际存在肥尾
 """
 import numpy as np
+
 np.random.seed(42)  # deterministic results
-import pandas as pd
 from scipy.optimize import minimize
 
 

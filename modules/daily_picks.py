@@ -11,15 +11,13 @@
 """
 import datetime
 import logging
-import os
 
 logger = logging.getLogger(__name__)
 
-from modules.config import (WATCH_LIST, PORT_A, PORT_HK, PORT_REIT, PORT_US,
-                            DAILY_PUSH, ALERT_CHANNELS)
+from modules.config import DAILY_PUSH, PORT_A, PORT_HK, PORT_REIT, PORT_US, WATCH_LIST
 from modules.cost_tier import calc_overall_tier
-from modules.portfolio_engine import build_portfolio_df
 from modules.holdings import get_actual_holdings
+from modules.portfolio_engine import build_portfolio_df
 
 
 def _held_codes():
@@ -232,7 +230,7 @@ def _reason_lines(row, held, category, market, add_gap, holdings=None):
     lines.append(f"- ROE {roe}%，资产负债率 {debt}%，经营现金流/净利润 {ocf}")
 
     try:
-        from modules.valuation import valuate, push_lines
+        from modules.valuation import push_lines, valuate
         lines.extend(push_lines(valuate(row)))
     except Exception as _e:
         logger.warning(f"[{__name__}] %s", _e, exc_info=True)

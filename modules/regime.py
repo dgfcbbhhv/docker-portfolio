@@ -1,7 +1,8 @@
 """市场诊断层 — 判断红利板块整体状态, 影响个股阈值"""
-import logging
-import numpy as np
 import datetime
+import logging
+
+import numpy as np
 
 logger = logging.getLogger(__name__)
 

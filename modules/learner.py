@@ -6,9 +6,10 @@ logger = logging.getLogger(__name__)
 自学习:   新数据到达时衰减加权更新 (新权重 0.3, 旧权重 0.7)
 自进化:   滑动窗口追踪各因子 IC 趋势, 判断提升/衰退/稳定
 """
+import datetime
 import json
 import os
-import datetime
+
 import numpy as np
 from scipy import stats
 
@@ -128,8 +129,12 @@ class FactorLearner:
             factors = model.get("factors", {})
             if factors:
                 # 按 IR 排序返回 top-3
-                from .factor_selector import FACTOR_DESCRIPTIONS, \
-                    STOCK_CONFIDENCE, STOCK_TIER, get_industry, INDUSTRY_FACTOR_PRIOR
+                from .factor_selector import (
+                    FACTOR_DESCRIPTIONS,
+                    STOCK_CONFIDENCE,
+                    STOCK_TIER,
+                    get_industry,
+                )
                 sorted_f = sorted(factors.items(), key=lambda x: -abs(x[1].get("ir", 0)))
                 recommended = []
                 for name, data in sorted_f:

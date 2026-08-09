@@ -15,10 +15,8 @@ logger = logging.getLogger(__name__)
 """
 import numpy as np
 from scipy import stats
-from .factors import (
-    FactorCalculator, FACTOR_DESCRIPTIONS, get_factor_descriptions
-)
 
+from .factors import FACTOR_DESCRIPTIONS, FactorCalculator
 
 # ── 行业→因子偏好映射 (先验权重) ──
 # 当 IC/IR 接近时用此作为兜底

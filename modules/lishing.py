@@ -6,7 +6,8 @@
 - 缺失维度: 自动跳过, 权重回收至其他维度
 - 关联交易: 默认不计分(数据不可获取), 人工备注可启用
 """
-import json, os
+import json
+import os
 
 NOTES_DIR = os.path.join(os.path.dirname(__file__), "..", "notes")
 os.makedirs(NOTES_DIR, exist_ok=True)

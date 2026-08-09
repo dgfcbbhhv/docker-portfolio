@@ -15,10 +15,10 @@ FACTOR_BATCH_LOCK = threading.Lock()
 
 
 def _run_batch(watch_codes, do_train):
-    from modules.learner import get_learner
-    from modules.factor_selector import get_factor_dynamic_bonus
-    from modules.data.app_cache import fetch_factor_history_cached as _hist
     from modules.config import WATCH_LIST
+    from modules.data.app_cache import fetch_factor_history_cached as _hist
+    from modules.factor_selector import get_factor_dynamic_bonus
+    from modules.learner import get_learner
 
     with FACTOR_BATCH_LOCK:
         FACTOR_BATCH.update(running=True, done=False, total=len(watch_codes),

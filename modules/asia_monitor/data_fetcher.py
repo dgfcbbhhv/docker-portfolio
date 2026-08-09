@@ -5,15 +5,18 @@
 使用akshare获取美股ETF数据
 """
 
-import datetime
-import pandas as pd
 import numpy as np
+import pandas as pd
+
 np.random.seed(42)  # deterministic results
-import time
 import random
+import time
+
 random.seed(42)  # deterministic results
-from typing import Dict, Optional, Tuple
 import logging
+from typing import Dict, Optional, Tuple
+
+import yfinance as yf
 
 from .config import ASIA_MARKETS, DATA_CONFIG
 
@@ -334,8 +337,8 @@ def clear_cache(code: str = None) -> None:
     Args:
         code: 指定市场代码，如果为None则清除所有缓存
     """
-    import os
     import glob
+    import os
     
     cache_dir = "modules/asia_monitor/cache"
     if not os.path.exists(cache_dir):

@@ -4,9 +4,8 @@
 在项目根目录运行: python3 -m modules.asia_monitor.test_module
 """
 import logging
-
-import sys
 import os
+import sys
 
 logger = logging.getLogger(__name__)
 # 确保项目根目录在路径中
@@ -14,10 +13,15 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from modules.asia_monitor.config import ASIA_MARKETS, get_score_label, get_market_list
+from modules.asia_monitor.config import ASIA_MARKETS, get_market_list, get_score_label
 from modules.asia_monitor.data_fetcher import fetch_etf_history, fetch_etf_info
-from modules.asia_monitor.factors import calc_momentum_percentile, calc_valuation_percentile, calc_divergence
-from modules.asia_monitor.scorer import calculate_market_score, calculate_all_scores
+from modules.asia_monitor.factors import (
+    calc_divergence,
+    calc_momentum_percentile,
+    calc_valuation_percentile,
+)
+from modules.asia_monitor.scorer import calculate_market_score
+
 
 def test_config():
     print("=== 测试配置模块 ===")

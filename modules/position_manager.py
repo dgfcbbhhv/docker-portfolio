@@ -8,7 +8,7 @@
 5. Kelly 无加仓空间或加仓空间不足 → 持有
 6. 以上全部通过且空间 >= add_gap → 可加仓
 """
-from modules.config import LAYERS, MAX_TOTAL, MAXPOS, DAILY_PUSH
+from modules.config import DAILY_PUSH, LAYERS, MAX_TOTAL, MAXPOS
 
 _GROUP_LAYER = {
     "A股持仓": "A",
