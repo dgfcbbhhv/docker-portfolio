@@ -75,6 +75,45 @@ def delete_batch(code, batch_index):
         stock["batches"].pop(batch_index)
         save_stock(code, stock)
 
+def deduct_sell(code, shares, note="卖出"):
+    """卖出扣减: 按日期正序(FIFO)扣除最早批次, 反映真实持仓。
+
+    返回 {"removed": int已扣, "matched_cost": float, "batches": 剩余批次}。
+    超出总持仓时按全部可扣处理, 并空批次剔除。
+    """
+    stock = get_stock(code)
+    batches = stock.get("batches", [])
+    remaining = int(shares)
+    removed = 0
+    matched_cost = 0.0
+    out = []
+    for b in batches:
+        bsh = int(b.get("shares") or 0)
+        if remaining <= 0:
+            out.append(b)
+            continue
+        if bsh <= remaining:
+            removed += bsh
+            matched_cost += bsh * float(b.get("cost") or 0)
+            remaining -= bsh
+            continue  # 整批扣完, 不保留空批次
+        b["shares"] = bsh - remaining
+        removed += remaining
+        matched_cost += remaining * float(b.get("cost") or 0)
+        remaining = 0
+        out.append(b)
+    stock["batches"] = out
+    save_stock(code, stock)
+    return {"removed": removed, "matched": round(matched_cost, 4), "batches": out}
+
+def sell_then_report(code, shares, price=None, date="", note="卖出"):
+    """卖出扣减 + 返回含已实现盈亏的报告, 兼容 reconcile 输出语义。"""
+    res = deduct_sell(code, shares, note)
+    if price:
+        res["proceeds"] = round(res["removed"] * price, 2)
+        res["realized_pnl"] = round(res["proceeds"] - res["matched"], 2)
+    return res
+
 def calc_batch_tier(batch_cost, dividend, current_price):
     if current_price <= 0 or dividend <= 0 or batch_cost <= 0:
         return {"ratio": None, "tier": "数据不足", "cost_dy": 0, "current_dy": 0}
