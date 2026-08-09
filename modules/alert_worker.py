@@ -83,7 +83,7 @@ class AlertWorker:
         sent = self.state.setdefault("sent", {})
         out = []
         for a in alerts:
-            key = "%s|%s|%s" % (a.get("code"), a.get("type"), a.get("msg"))
+            key = "%s|%s" % (a.get("code"), a.get("type"))
             last = sent.get(key)
             if last and (now - last) < cooldown:
                 continue
@@ -94,7 +94,7 @@ class AlertWorker:
         now = time.time()
         sent = self.state.setdefault("sent", {})
         for a in alerts:
-            key = "%s|%s|%s" % (a.get("code"), a.get("type"), a.get("msg"))
+            key = "%s|%s" % (a.get("code"), a.get("type"))
             sent[key] = now
 
     def _send_alerts(self, alerts, cur):
@@ -216,17 +216,48 @@ class AlertWorker:
         except Exception as e:
             logger.exception("daily picks push failed (%s): %s", market, e)
 
+    def _run_crosscheck(self):
+        from modules.config import CROSSCHECK
+        if not CROSSCHECK.get("enabled"):
+            return
+        try:
+            from modules.data_crosscheck import run
+            ok, text = run()
+            logger.info("data crosscheck: ok=%s", ok)
+        except Exception as e:
+            logger.exception("data crosscheck failed: %s", e)
+
+    def _paper_daily_check(self):
+        """模拟盘每日快照尝试: 复用 check_and_run_daily 的门禁+去重+锁。
+        未到计划时间/非交易日/今日已跑 都会快速返回, 不消耗行情请求。"""
+        try:
+            from modules.paper_trader import check_and_run_daily
+            res = check_and_run_daily()
+            if res.get("status") in ("success", "failed"):
+                logger.info("paper daily run: %s (%s)", res.get("status"),
+                            res.get("reason") or res.get("error") or "")
+            elif res.get("status") != "waiting":
+                logger.info("paper daily check: %s (%s)", res.get("status"),
+                            res.get("reason") or "")
+        except Exception as e:
+            logger.exception("paper daily check failed: %s", e)
+
     def run_forever(self):
-        from modules.config import DAILY_PUSH
+        from modules.config import DAILY_PUSH, CROSSCHECK
         scheduler = Scheduler()
         scheduler.add_task("refresh_and_check", self._refresh_task, 60,
                            run_immediately=True)
         scheduler.add_task("heartbeat", _write_heartbeat, 60)
+        scheduler.add_task("paper_daily", self._paper_daily_check, 300,
+                           run_immediately=True)
         if DAILY_PUSH.get("enabled"):
             scheduler.add_daily_task("daily_push_ah", lambda: self._push_daily_picks("AH"),
                                      DAILY_PUSH.get("time_ah", "16:30"))
             scheduler.add_daily_task("daily_push_us", lambda: self._push_daily_picks("US"),
                                      DAILY_PUSH.get("time_us", "06:30"))
+        if CROSSCHECK.get("enabled"):
+            scheduler.add_daily_task("crosscheck", self._run_crosscheck,
+                                     CROSSCHECK.get("time", "16:40"))
         scheduler.start()
         logger.info("alert worker started")
         try:

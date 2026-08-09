@@ -2,6 +2,7 @@
 Shadow Account — 交易行为分析
 基于成本分层买入记录 + 可选卖出记录，分析交易行为特征。
 """
+import logging
 import json
 import os
 from datetime import datetime, timedelta
@@ -12,6 +13,7 @@ import pandas as pd
 from modules.cost_tier import load_all as load_cost_tiers
 from modules.config import WATCH_LIST
 
+logger = logging.getLogger(__name__)
 # 卖出记录存储
 TRADE_FILE = os.path.join(os.path.dirname(__file__), "..", "notes", "trades.json")
 
@@ -81,8 +83,8 @@ def get_all_trades():
             })
     df = pd.DataFrame(all_trades)
     if not df.empty:
-        df["date"] = pd.to_datetime(df["date"])
-        df = df.sort_values("date").reset_index(drop=True)
+        df["date"] = pd.to_datetime(df["date"], errors="coerce")
+        df = df.dropna(subset=["date"]).sort_values("date").reset_index(drop=True)
     return df
 
 

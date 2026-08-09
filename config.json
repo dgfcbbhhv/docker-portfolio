@@ -1,94 +1,318 @@
 {
   "portfolio": {
     "A": {
-      "600900": {"name": "长江电力", "ratio": 25},
-      "601398": {"name": "工商银行", "ratio": 20},
-      "600036": {"name": "招商银行", "ratio": 10},
-      "600941": {"name": "中国移动", "ratio": 20},
-      "601088": {"name": "中国神华", "ratio": 10},
-      "600938": {"name": "中国海油", "ratio": 10},
-      "601318": {"name": "中国平安", "ratio": 5},
-      "600519": {"name": "贵州茅台", "ratio": 5}
+      "600900": {
+        "name": "长江电力",
+        "ratio": 25
+      },
+      "601398": {
+        "name": "工商银行",
+        "ratio": 20
+      },
+      "600036": {
+        "name": "招商银行",
+        "ratio": 10
+      },
+      "600941": {
+        "name": "中国移动",
+        "ratio": 20
+      },
+      "601088": {
+        "name": "中国神华",
+        "ratio": 10
+      },
+      "600938": {
+        "name": "中国海油",
+        "ratio": 10
+      },
+      "601318": {
+        "name": "中国平安",
+        "ratio": 5
+      },
+      "600519": {
+        "name": "贵州茅台",
+        "ratio": 5
+      }
     },
     "HK": {
-      "00002": {"name": "中电控股", "ratio": 25},
-      "02638": {"name": "港灯-SS", "ratio": 20},
-      "01398": {"name": "工商银行(H)", "ratio": 25},
-      "00003": {"name": "中华煤气", "ratio": 15},
-      "02388": {"name": "中银香港", "ratio": 5},
-      "00005": {"name": "汇丰控股", "ratio": 10},
-      "00700": {"name": "腾讯控股", "ratio": 5},
-      "00006": {"name": "电能实业", "ratio": 5}
+      "00002": {
+        "name": "中电控股",
+        "ratio": 25
+      },
+      "02638": {
+        "name": "港灯-SS",
+        "ratio": 20
+      },
+      "01398": {
+        "name": "工商银行(H)",
+        "ratio": 25
+      },
+      "00003": {
+        "name": "中华煤气",
+        "ratio": 15
+      },
+      "02388": {
+        "name": "中银香港",
+        "ratio": 5
+      },
+      "00005": {
+        "name": "汇丰控股",
+        "ratio": 10
+      },
+      "00700": {
+        "name": "腾讯控股",
+        "ratio": 5
+      },
+      "00006": {
+        "name": "电能实业",
+        "ratio": 5
+      }
     },
     "REIT": {
-      "508098": {"name": "嘉实京东仓储REIT", "ratio": 5},
-      "508068": {"name": "华夏北京保障房REIT", "ratio": 15}
+      "508098": {
+        "name": "嘉实京东仓储REIT",
+        "ratio": 5
+      },
+      "508068": {
+        "name": "华夏北京保障房REIT",
+        "ratio": 15
+      }
     },
     "US": {
-      "AAPL": {"name": "苹果", "ratio": 30},
-      "NVDA": {"name": "英伟达", "ratio": 10},
-      "MSFT": {"name": "微软", "ratio": 60}
+      "AAPL": {
+        "name": "苹果",
+        "ratio": 30
+      },
+      "NVDA": {
+        "name": "英伟达",
+        "ratio": 10
+      },
+      "MSFT": {
+        "name": "微软",
+        "ratio": 60
+      }
     }
   },
   "layers": {
-    "A": {"sequence": 1, "enabled": true, "invested_cap": 80, "max_drawdown": 10},
-    "HK": {"sequence": 2, "enabled": true, "invested_cap": 80, "max_drawdown": 10},
-    "US": {"sequence": 3, "enabled": true, "invested_cap": 60, "max_drawdown": 10},
-    "REIT": {"sequence": 4, "enabled": true, "invested_cap": 20, "max_drawdown": 10}
+    "A": {
+      "sequence": 1,
+      "enabled": true,
+      "invested_cap": 80,
+      "max_drawdown": 10
+    },
+    "HK": {
+      "sequence": 2,
+      "enabled": true,
+      "invested_cap": 80,
+      "max_drawdown": 10
+    },
+    "US": {
+      "sequence": 3,
+      "enabled": true,
+      "invested_cap": 60,
+      "max_drawdown": 10
+    },
+    "REIT": {
+      "sequence": 4,
+      "enabled": true,
+      "invested_cap": 20,
+      "max_drawdown": 10
+    }
   },
   "manual_div_yields": {
-    "600900": {"ttm": 3.39, "lfy": 3.39},
-    "601398": {"ttm": 3.81, "lfy": 3.81},
-    "600036": {"ttm": 4.97, "lfy": 4.97},
-    "600941": {"ttm": 4.76, "lfy": 4.76},
-    "601088": {"ttm": 4.22, "lfy": 4.22},
-    "600938": {"ttm": 3.52, "lfy": 3.52},
-    "601318": {"ttm": 4.84, "lfy": 4.84},
-    "600519": {"ttm": 3.82, "lfy": 3.82},
-    "00002": {"lfy": 4.09},
-    "02638": {"lfy": 4.96},
-    "01398": {"lfy": 4.58},
-    "00003": {"lfy": 4.88},
-    "02388": {"lfy": 4.06},
-    "00005": {"lfy": 3.58},
-    "00006": {"lfy": 4.77},
-    "00700": {"lfy": 1.15},
-    "AAPL": {"ttm": 0.32, "lfy": 0.31},
-    "NVDA": {"ttm": 0.15, "lfy": 0.02},
-    "MSFT": {"ttm": 0.78, "lfy": 0.61}
+    "600900": {
+      "ttm": 3.39,
+      "lfy": 3.39
+    },
+    "601398": {
+      "ttm": 3.81,
+      "lfy": 3.81
+    },
+    "600036": {
+      "ttm": 4.97,
+      "lfy": 4.97
+    },
+    "600941": {
+      "ttm": 4.76,
+      "lfy": 4.76
+    },
+    "601088": {
+      "ttm": 4.22,
+      "lfy": 4.22
+    },
+    "600938": {
+      "ttm": 3.52,
+      "lfy": 3.52
+    },
+    "601318": {
+      "ttm": 4.84,
+      "lfy": 4.84
+    },
+    "600519": {
+      "ttm": 3.82,
+      "lfy": 3.82
+    },
+    "00002": {
+      "lfy": 4.09
+    },
+    "02638": {
+      "lfy": 4.96
+    },
+    "01398": {
+      "lfy": 4.58
+    },
+    "00003": {
+      "lfy": 4.88
+    },
+    "02388": {
+      "lfy": 4.06
+    },
+    "00005": {
+      "lfy": 3.58
+    },
+    "00006": {
+      "lfy": 4.77
+    },
+    "00700": {
+      "lfy": 1.15
+    },
+    "AAPL": {
+      "ttm": 0.32,
+      "lfy": 0.31
+    },
+    "NVDA": {
+      "ttm": 0.15,
+      "lfy": 0.02
+    },
+    "MSFT": {
+      "ttm": 0.78,
+      "lfy": 0.61
+    }
   },
   "manual_prices": {
     "AAPL": 331.65,
     "NVDA": 193.03,
-    "MSFT": 449.40
+    "MSFT": 449.4
   },
   "manual_us_growth": {
-    "AAPL": {"pe": 35, "pe_pctl": 50, "price_above_ma20": true, "ma20_above_ma60": true, "price_above_ma60": true, "ma60_above_ma120": true},
-    "NVDA": {"pe": 65, "pe_pctl": 75, "price_above_ma20": true, "ma20_above_ma60": true, "price_above_ma60": false, "ma60_above_ma120": true},
-    "MSFT": {"pe": 38, "pe_pctl": 55, "price_above_ma20": true, "ma20_above_ma60": true, "price_above_ma60": true, "ma60_above_ma120": true}
+    "AAPL": {
+      "pe": 35,
+      "pe_pctl": 50,
+      "price_above_ma20": true,
+      "ma20_above_ma60": true,
+      "price_above_ma60": true,
+      "ma60_above_ma120": true
+    },
+    "NVDA": {
+      "pe": 65,
+      "pe_pctl": 75,
+      "price_above_ma20": true,
+      "ma20_above_ma60": true,
+      "price_above_ma60": false,
+      "ma60_above_ma120": true
+    },
+    "MSFT": {
+      "pe": 38,
+      "pe_pctl": 55,
+      "price_above_ma20": true,
+      "ma20_above_ma60": true,
+      "price_above_ma60": true,
+      "ma60_above_ma120": true
+    }
   },
   "watch_list": {
-    "600900": {"name": "长江电力", "market": "A"},
-    "601398": {"name": "工商银行", "market": "A"},
-    "600036": {"name": "招商银行", "market": "A"},
-    "600941": {"name": "中国移动", "market": "A"},
-    "601088": {"name": "中国神华", "market": "A"},
-    "600938": {"name": "中国海油", "market": "A"},
-    "601318": {"name": "中国平安", "market": "A"},
-    "600519": {"name": "贵州茅台", "market": "A"},
-    "508098": {"name": "嘉实京东仓储REIT", "market": "A"},
-    "508068": {"name": "华夏北京保障房REIT", "market": "A"},
-    "00002": {"name": "中电控股", "market": "HK"},
-    "02638": {"name": "港灯-SS", "market": "HK"},
-    "01398": {"name": "工商银行(H)", "market": "HK"},
-    "00003": {"name": "中华煤气", "market": "HK"},
-    "02388": {"name": "中银香港", "market": "HK"},
-    "00005": {"name": "汇丰控股", "market": "HK"},
-    "00006": {"name": "电能实业", "market": "HK"},
-    "00700": {"name": "腾讯控股", "market": "HK"},
-    "AAPL": {"name": "苹果", "market": "US"},
-    "NVDA": {"name": "英伟达", "market": "US"},
-    "MSFT": {"name": "微软", "market": "US"}
+    "600900": {
+      "name": "长江电力",
+      "market": "A"
+    },
+    "601398": {
+      "name": "工商银行",
+      "market": "A"
+    },
+    "600036": {
+      "name": "招商银行",
+      "market": "A"
+    },
+    "600941": {
+      "name": "中国移动",
+      "market": "A"
+    },
+    "601088": {
+      "name": "中国神华",
+      "market": "A"
+    },
+    "600938": {
+      "name": "中国海油",
+      "market": "A"
+    },
+    "601318": {
+      "name": "中国平安",
+      "market": "A"
+    },
+    "600519": {
+      "name": "贵州茅台",
+      "market": "A"
+    },
+    "508098": {
+      "name": "嘉实京东仓储REIT",
+      "market": "A"
+    },
+    "508068": {
+      "name": "华夏北京保障房REIT",
+      "market": "A"
+    },
+    "00002": {
+      "name": "中电控股",
+      "market": "HK"
+    },
+    "02638": {
+      "name": "港灯-SS",
+      "market": "HK"
+    },
+    "01398": {
+      "name": "工商银行(H)",
+      "market": "HK"
+    },
+    "00003": {
+      "name": "中华煤气",
+      "market": "HK"
+    },
+    "02388": {
+      "name": "中银香港",
+      "market": "HK"
+    },
+    "00005": {
+      "name": "汇丰控股",
+      "market": "HK"
+    },
+    "00006": {
+      "name": "电能实业",
+      "market": "HK"
+    },
+    "00700": {
+      "name": "腾讯控股",
+      "market": "HK"
+    },
+    "AAPL": {
+      "name": "苹果",
+      "market": "US"
+    },
+    "NVDA": {
+      "name": "英伟达",
+      "market": "US"
+    },
+    "MSFT": {
+      "name": "微软",
+      "market": "US"
+    },
+    "600028": {
+      "name": "中国石化",
+      "market": "A"
+    },
+    "00939": {
+      "name": "建设银行(H)",
+      "market": "HK"
+    }
   },
   "kelly": {
     "frac": 0.25,
@@ -103,7 +327,10 @@
     "lishing_drop": 10.0,
     "cooldown_minutes": 240,
     "retries": 3,
-    "channels": ["bark", "email"]
+    "channels": [
+      "bark",
+      "email"
+    ]
   },
   "daily_push": {
     "enabled": true,
@@ -121,5 +348,10 @@
     "fin_max_age_days": 7,
     "div_max_age_days": 30,
     "hist_max_age_days": 7
+  },
+  "crosscheck": {
+    "enabled": true,
+    "threshold": 2.0,
+    "time": "16:40"
   }
 }

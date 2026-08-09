@@ -7,6 +7,7 @@
 4. Monte Carlo 极端模拟: 1000次
 """
 import numpy as np
+np.random.seed(42)  # deterministic results
 import pandas as pd
 
 from modules.risk import single_day_loss, industry_collapse_loss

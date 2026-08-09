@@ -1,5 +1,7 @@
 """回测引擎 — 三场景 + 幸存者偏差声明
+import logging
 
+logger = logging.getLogger(__name__)
 假设:
 - 回测基于历史后复权数据
 - 未剔除退市股票, 存在幸存者偏差
@@ -65,8 +67,8 @@ def fetch_history(code, years=5, mkt="A"):
                 symbol=code, period="daily",
                 start_date=start.strftime("%Y%m%d"),
                 end_date=end.strftime("%Y%m%d"), adjust="qfq"))
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.warning(f"[{__name__}] %s", _e, exc_info=True)
         if df is None or df.empty:
             tx = _fetch_tx_history(code, max(years * 365, 500))
             if tx is not None:
@@ -109,12 +111,12 @@ def fetch_histories(codes, years=5, mkt="A"):
                 df = f.result(timeout=_REQ_TIMEOUT)
                 if not df.empty:
                     r[c] = df
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.warning(f"[{__name__}] %s", _e, exc_info=True)
     return r
 
 
-def backtest_portfolio(codes, weights, years=5, cost=0.001, risk_free=0.02):
+def backtest_portfolio(codes, weights, years=5, cost=0.001, risk_free=0.02, mkt_map=None):
     """
     回测组合
 
@@ -124,20 +126,21 @@ def backtest_portfolio(codes, weights, years=5, cost=0.001, risk_free=0.02):
         years: 回测年数
         cost: 单边交易成本
         risk_free: 无风险利率
+        mkt_map: dict {code: "A"|"H"|"US"} 可选, 缺省按 A 股拉取
 
     返回 dict 或 None
     """
     all_data = {}
     with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as pool:
-        fut = {pool.submit(fetch_history, c, years): c for c in codes}
+        fut = {pool.submit(fetch_history, c, years, (mkt_map or {}).get(c, "A")): c for c in codes}
         for f in as_completed(fut, timeout=_REQ_TIMEOUT):
             try:
                 c = fut[f]
                 df = f.result()
                 if not df.empty and "close" in df.columns:
                     all_data[c] = df["close"]
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.warning(f"[{__name__}] %s", _e, exc_info=True)
 
     if not all_data:
         return None
@@ -219,39 +222,46 @@ def backtest_portfolio(codes, weights, years=5, cost=0.001, risk_free=0.02):
 def backtest_scenarios(port_a, port_hk, fins, years=5):
     """
     三场景回测:
-      bull: 只保留李氏评分 >= 70 的持仓
-      base: 当前持仓不变
-      bear: 剔除李氏评分 < 50 的持仓
+      bull: 高ROE持仓加权 (近似"高评分")
+      base: 当前持仓权重不变
+      bear: 剔除低ROE持仓
 
-    注意: lishing_scores 需要从外部传入
-    这里简化: 用 roe > 10 作为近似高评分判断
+    说明: 李氏评分依赖完整财务行(现金流/审计等), 本函数只拿到
+    fins(基本面字典), 故用 ROE 作近似代理, 仅用于相对情景对比,
+    不用于交易决策。A股+港股合并计入权重。
     """
-    base_weights = {}
-    for c, cfg in port_a.items():
-        base_weights[c] = cfg.get("ratio", 0) or 0
+    merged = {}
+    for port in (port_a, port_hk):
+        for c, cfg in port.items():
+            merged[c] = cfg.get("ratio", 0) or 0
+
+    base_weights = dict(merged)
 
     # 乐观: 高ROE加权
     bull_weights = {}
-    for c, cfg in port_a.items():
-        fi = fins.get(c, {})
-        roe = fi.get("roe", 0) or 0
+    for c, w in merged.items():
+        roe = fins.get(c, {}).get("roe", 0) or 0
         if roe > 10:
-            bull_weights[c] = (cfg.get("ratio", 0) or 0) * 1.2
+            bull_weights[c] = w * 1.2
         elif roe > 5:
-            bull_weights[c] = cfg.get("ratio", 0) or 0
+            bull_weights[c] = w
 
     # 悲观: 剔除低ROE
     bear_weights = {}
-    for c, cfg in port_a.items():
-        fi = fins.get(c, {})
-        roe = fi.get("roe", 0) or 0
+    for c, w in merged.items():
+        roe = fins.get(c, {}).get("roe", 0) or 0
         if roe > 5:
-            bear_weights[c] = cfg.get("ratio", 0) or 0
+            bear_weights[c] = w
 
-    codes = list(port_a.keys())
+    codes = list(merged.keys())
+    mkt_map = {}
+    for c in port_a:
+        mkt_map[c] = "A"
+    for c in port_hk:
+        mkt_map[c] = "H"
     results = {}
     for scenario, weights in [("bull", bull_weights), ("base", base_weights), ("bear", bear_weights)]:
-        r = backtest_portfolio(codes, weights, years=years)
+        r = backtest_portfolio(codes, weights, years=years, mkt_map=mkt_map)
         if r:
             results[scenario] = r
 

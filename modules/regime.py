@@ -1,17 +1,9 @@
-"""市场诊断层 — 判断红利板块整体状态, 影响个股阈值
-
-输入：组合内各股的 PE/PB 分位
-输出：regime = "undervalued" | "neutral" | "overvalued"
-
-PA_Agent 决策树思路的简化实现:
-  市场诊断 → 策略路由 → 个股决策
-  
-  红利板块整体 PE 分位 < 30% → 低估 (放宽买入阈值)
-  红利板块整体 PE 分位 30-70% → 中性 (默认阈值)
-  红利板块整体 PE 分位 > 70% → 高估 (收紧买入阈值, 警惕)
-"""
+"""市场诊断层 — 判断红利板块整体状态, 影响个股阈值"""
+import logging
 import numpy as np
 import datetime
+
+logger = logging.getLogger(__name__)
 
 
 def fetch_macro_signals():
@@ -25,7 +17,7 @@ def fetch_macro_signals():
         dict: {
             "china_10y": float | None,
             "us_10y": float | None,
-            "china_us_spread": float | None,  # 中国10Y - 美国10Y (%)
+            "china_us_spread": float | None,
             "vix": float | None,
             "updated_at": str,
         }
@@ -44,8 +36,8 @@ def fetch_macro_signals():
             result["us_10y"] = round(float(last.iloc[8]), 3)     # 美国10Y
             result["china_us_spread"] = round(result["china_10y"] - result["us_10y"], 3)
             has_data = True
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.warning(f"[fetch_macro_signals] %s", _e, exc_info=True)
 
     # ── VIX ──
     try:
@@ -55,14 +47,15 @@ def fetch_macro_signals():
         if vix_hist is not None and not vix_hist.empty:
             result["vix"] = round(float(vix_hist["Close"].iloc[-1]), 1)
             has_data = True
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.warning(f"[fetch_macro_signals] %s", _e, exc_info=True)
 
     return result if has_data else {"error": "无法获取宏观数据"}
 
 
 def detect_regime(pe_pctls, pb_pctls, macro_signals=None):
     """判断市场状态
+
     pe_pctls: dict {code: pe_percentile} — 组合内各股 PE 分位
     pb_pctls: dict {code: pb_percentile} — 组合内各股 PB 分位
     macro_signals: dict | None — 来自 fetch_macro_signals() 的宏观信号
@@ -72,23 +65,9 @@ def detect_regime(pe_pctls, pb_pctls, macro_signals=None):
         "label": str,
         "pe_median": float,
         "pb_median": float,
-        "threshold_adjust": int,   # 买入阈值调整量
+        "threshold_adjust": int,
         "risk_warning": str | None,
-        "macro": dict | None,      # 新增: 宏观信号
-    }
-    """
-    """判断市场状态
-
-    pe_pctls: dict {code: pe_percentile} — 组合内各股 PE 分位
-    pb_pctls: dict {code: pb_percentile} — 组合内各股 PB 分位
-
-    返回: {
-        "regime": str,
-        "label": str,
-        "pe_median": float,
-        "pb_median": float,
-        "threshold_adjust": int,   # 买入阈值调整量
-        "risk_warning": str | None,
+        "macro": dict | None,
     }
     """
     pe_vals = [v for v in pe_pctls.values() if v is not None]
@@ -133,6 +112,7 @@ def detect_regime(pe_pctls, pb_pctls, macro_signals=None):
             "threshold_adjust": +5,      # 买入阈值提高 5 分
             "risk_warning": "; ".join(warnings) if warnings else "整体估值偏高, 谨慎加仓",
         }
+
 
 
 def get_factor_regime(codes):

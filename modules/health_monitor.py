@@ -1,6 +1,8 @@
+import logging
 import datetime, numpy as np, pandas as pd
 from .data.cache import retry
 
+logger = logging.getLogger(__name__)
 try:
     import akshare as ak
 except ImportError:
@@ -42,8 +44,8 @@ def capital_flow(code, name="", days=20):
                 "alert": alert,
                 "detail": df,
             })
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.warning(f"[{__name__}] %s", _e, exc_info=True)
     return result
 
 
@@ -81,8 +83,8 @@ def market_sentiment():
         else:
             zone, advice = "极度亢奋", "狂热，红利股可能跑输，持现观望"
         result.update({"up": up, "down": down, "ratio": ratio, "zone": zone, "advice": advice})
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.warning(f"[{__name__}] %s", _e, exc_info=True)
     return result
 
 
@@ -120,8 +122,8 @@ def ma250_deviation(code, mkt="A"):
             "zone": zone,
             "priority": priority,
         })
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.warning(f"[{__name__}] %s", _e, exc_info=True)
     return result
 
 
@@ -191,8 +193,8 @@ def dividend_momentum(code, months=12):
             "status": status,
             "alert": alert,
         })
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.warning(f"[{__name__}] %s", _e, exc_info=True)
     return result
 
 

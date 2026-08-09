@@ -32,6 +32,41 @@ from modules.data.freshness import freshness_issues
 
 DATA_DIR = os.path.join(_ROOT, "data")
 CAL_PATH = os.path.join(DATA_DIR, "trading_calendar.json")
+PUSH_STATE_PATH = os.path.join(DATA_DIR, "daily_push_state.json")
+
+
+def _load_push_state():
+    if os.path.exists(PUSH_STATE_PATH):
+        try:
+            with open(PUSH_STATE_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+    return {}
+
+
+def _save_push_state(state):
+    os.makedirs(DATA_DIR, exist_ok=True)
+    tmp = PUSH_STATE_PATH + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(state, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, PUSH_STATE_PATH)
+
+
+def _already_pushed(market, date, kind="picks"):
+    """当日该市场/类型是否已推送过（防重复轰炸）。"""
+    st = _load_push_state()
+    rec = st.get("%s:%s" % (market, kind))
+    return bool(rec and rec.get("date") == date)
+
+
+def _mark_pushed(market, date, kind="picks", **extra):
+    st = _load_push_state()
+    rec = dict(extra)
+    rec["date"] = date
+    rec["sent_at"] = datetime.datetime.now().isoformat()
+    st["%s:%s" % (market, kind)] = rec
+    _save_push_state(st)
 
 # 美股主要节假日(2025-2026), 按日期跳过
 US_HOLIDAYS = {
@@ -58,8 +93,8 @@ def _load_calendar(year):
                 data = json.load(f)
             if data.get("year") == year:
                 return set(data.get("days", []))
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.warning(f"[{__name__}] %s", _e, exc_info=True)
     days = _fetch_calendar(year)
     if days is not None:
         os.makedirs(DATA_DIR, exist_ok=True)
@@ -102,6 +137,10 @@ def build_and_send(market="AH", dry_run=False, day=None, skip_trading_check=Fals
         skip_trading_check: 跳过交易日判断(测试用)。
     """
     today = day or datetime.date.today()
+    today_s = today.isoformat()
+    if not dry_run and _already_pushed(market, today_s):
+        logger.info("%s %s 当日已推送, 跳过重复", market, today_s)
+        return True, None
     if not skip_trading_check:
         # 美股收盘对应北京时间次日凌晨; 06:30 推送时, 美股交易日 = 北京日期-1天
         check_day = today - datetime.timedelta(days=1) if market == "US" else today
@@ -112,10 +151,12 @@ def build_and_send(market="AH", dry_run=False, day=None, skip_trading_check=Fals
 
     if not _freshness_ok():
         msg = "【数据异常】今日数据新鲜度异常，选股不可靠，请先到界面刷新数据后再查看。"
-        if not dry_run:
-            AlertSender().send("选股推送-数据异常", msg, channel=ALERT_CHANNELS[0],
-                               meta={"kind": "daily_picks", "market": market,
-                                     "date": today.isoformat(), "freshness_ok": False})
+        if not dry_run and not _already_pushed(market, today_s, "warn"):
+            AlertSender().send_multi(
+                "选股推送-数据异常", msg, channels=ALERT_CHANNELS,
+                meta={"kind": "daily_picks", "market": market,
+                      "date": today_s, "freshness_ok": False})
+            _mark_pushed(market, today_s, "warn")
         logger.warning("数据新鲜度异常, 选股推送降级为提醒")
         return True, msg
 
@@ -124,7 +165,7 @@ def build_and_send(market="AH", dry_run=False, day=None, skip_trading_check=Fals
         result["picks"] = [p for p in result.get("picks", []) if p["market"] == "US"]
     else:
         result["picks"] = [p for p in result.get("picks", []) if p["market"] in ("A", "HK")]
-    result["date"] = today.isoformat()
+    result["date"] = today_s
 
     msg = compose_message(result, market=market)
     if not msg:
@@ -132,25 +173,28 @@ def build_and_send(market="AH", dry_run=False, day=None, skip_trading_check=Fals
         return False, None
 
     if dry_run:
-        print("=" * 60)
-        print(msg)
-        print("=" * 60)
-        print(f"[dry-run] 候选池 {len(result.get('picks', []))} 只，"
+        logger.info("=" * 60)
+        logger.info(msg)
+        logger.info("=" * 60)
+        logger.info(f"[dry-run] 候选池 {len(result.get('picks', []))} 只，"
               f"跳过 {len(result.get('skipped', []))} 只数据不足")
         return False, msg
 
-    ok = AlertSender().send(
-        "今日价值投资选股", msg, channel=ALERT_CHANNELS[0],
-        meta={"kind": "daily_picks", "market": market, "date": today.isoformat(),
+    ok, channel = AlertSender().send_multi(
+        "今日价值投资选股", msg, channels=ALERT_CHANNELS,
+        meta={"kind": "daily_picks", "market": market, "date": today_s,
               "freshness_ok": True, "picks": len(result.get("picks", [])),
               "codes": [p.get("code") for p in result.get("picks", [])]})
     if ok:
+        _mark_pushed(market, today_s, "picks", picks=len(result.get("picks", [])),
+                     channel=channel)
         try:
             from modules.execution_log import ensure_pending_from_audit
             ensure_pending_from_audit()
         except Exception:
             logger.exception("execution log sync failed")
-    logger.info("选股推送 %s: %s (%d 只)", market, ok, len(result.get("picks", [])))
+    logger.info("选股推送 %s: %s (%d 只, 通道 %s)", market, ok,
+                len(result.get("picks", [])), channel)
     return ok, msg
 
 

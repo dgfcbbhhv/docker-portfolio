@@ -1,5 +1,7 @@
 """盈利趋势分析 — 营收/净利同比、利润率、盈利评级
+import logging
 
+logger = logging.getLogger(__name__)
 数据源: 同花顺 THS 财务摘要(多期, 含同比增长率), 与 fundamental 共用。
 口径:
 - np_yoy/rev_yoy:  最新一期(季报/年报) 净利润/营业总收入 同比
@@ -150,8 +152,8 @@ def _fetch_one(c):
     info = _finalize(info)
     try:
         save("earn", k, pd.DataFrame([info]))
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.warning(f"[{__name__}] %s", _e, exc_info=True)
     return c, info
 
 
@@ -167,6 +169,6 @@ def fetch_earnings(codes):
             try:
                 c, info = f.result(timeout=180)
                 res[c] = info
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.warning(f"[{__name__}] %s", _e, exc_info=True)
     return res

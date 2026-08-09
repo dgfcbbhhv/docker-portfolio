@@ -3,11 +3,13 @@
 """
 导出模块：Excel 报告导出
 """
+import logging
 import os
 import datetime
 import pandas as pd
 from pathlib import Path
 
+logger = logging.getLogger(__name__)
 EXPORT_DIR = Path("data/exports")
 SNAPSHOT_DIR = Path("data/snapshots")
 

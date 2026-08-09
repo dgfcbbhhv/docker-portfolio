@@ -1,6 +1,8 @@
 """因子智能选择模块
 功能: 根据股票代码自动计算各因子有效性(IC/IR), 结合行业先验推荐 top-3
+import logging
 
+logger = logging.getLogger(__name__)
 设计:
   Step 1 — 行业先验: 按股票行业预设因子偏好 (作为 IR 平局时的兜底)
   Step 2 — 时序 IC/IR: 对每个 alpha 计算滚动秩相关

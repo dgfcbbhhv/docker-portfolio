@@ -18,6 +18,7 @@ x-alert-env: &alert-env
   LONGBRIDGE_APP_SECRET: ${LONGBRIDGE_APP_SECRET:-}
   LONGBRIDGE_ACCESS_TOKEN: ${LONGBRIDGE_ACCESS_TOKEN:-}
   LONGBRIDGE_REGION: ${LONGBRIDGE_REGION:-cn}
+  LONGBRIDGE_TOKEN_REFRESHED: ${LONGBRIDGE_TOKEN_REFRESHED:-}
 
 x-app-volumes: &app-volumes
   - ./data:/app/data
@@ -35,6 +36,7 @@ services:
     restart: unless-stopped
     environment:
       <<: *alert-env
+      MODE: portfolio
     volumes: *app-volumes
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8501/_stcore/health', timeout=5)"]

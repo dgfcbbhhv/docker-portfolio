@@ -1,9 +1,13 @@
-"""长桥 OpenAPI 数据源（美股/港股行情备援）
+"""长桥 OpenAPI 数据源（A股/港股/美股行情主源备援）
 
 凭据从环境变量读取：LONGBRIDGE_APP_KEY / LONGBRIDGE_APP_SECRET / LONGBRIDGE_ACCESS_TOKEN
-SDK 未安装或凭据缺失/鉴权失败时全部降级返回空结果，绝不阻塞主流程。
+Access Token（旧版 API Key 认证）默认 90 天过期；本模块首次调用前自动执行一次
+token 保鲜：距上次刷新 ≥60 天即调用 refresh_access_token 换取新 token，
+写回 .env 与 os.environ，使凭证全自动续期、无需人工干预。
+SDK 未安装/凭据缺失/鉴权失败时全部降级返回空结果，绝不阻塞主流程。
 """
 import os
+import datetime
 import logging
 import pandas as pd
 
@@ -11,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 _CONFIG = None
 _LB = None
+_REFRESH_GUARD = False
 
 
 def _available():
@@ -24,6 +29,103 @@ def _available():
     return _LB
 
 
+def _env_file():
+    for p in ("/app/.env", os.path.join(os.path.dirname(__file__), "..", "..", ".env")):
+        if os.path.exists(p):
+            return os.path.abspath(p)
+    return None
+
+
+def _refresh_if_needed():
+    """每 ~60 天自动换取一个新 access token 并把其余额持久化到 .env。
+
+    幂等且 fail-safe：刷新失败时保留旧 token，绝不抛出。
+    """
+    global _REFRESH_GUARD
+    if _REFRESH_GUARD:
+        return
+    _REFRESH_GUARD = True
+    try:
+        from longbridge.openapi import Config
+    except Exception:
+        return
+    app_key = os.environ.get("LONGBRIDGE_APP_KEY", "").strip()
+    app_secret = os.environ.get("LONGBRIDGE_APP_SECRET", "").strip()
+    access_token = os.environ.get("LONGBRIDGE_ACCESS_TOKEN", "").strip()
+    if not (app_key and app_secret and access_token):
+        return
+
+    last = os.environ.get("LONGBRIDGE_TOKEN_REFRESHED", "").strip()
+    if last:
+        try:
+            ts = datetime.datetime.strptime(last[:10], "%Y-%m-%d")
+            if (datetime.date.today() - ts.date()).days < 60:
+                return
+        except ValueError:
+            pass
+
+    try:
+        cfg = Config.from_apikey(app_key, app_secret, access_token, http_url=_http_url())
+        new_token = cfg.refresh_access_token()
+        if not new_token or new_token == access_token:
+            return
+        os.environ["LONGBRIDGE_ACCESS_TOKEN"] = new_token
+        today = datetime.date.today().isoformat()
+        os.environ["LONGBRIDGE_TOKEN_REFRESHED"] = today
+        _persist_env(new_token, today)
+        logger.info("长桥 access token 自动续期成功 (%s)", today)
+    except Exception as e:
+        logger.warning("长桥 token 保鲜失败(继续用旧 token): %s", e)
+
+
+def _persist_env(new_token, refreshed):
+    """把新 token 写回容器挂载的 .env，保证重启后 compose 仍能读到新值。"""
+    path = _env_file()
+    if not path:
+        return
+    try:
+        lines = []
+        import codecs
+        for raw in open(path, "rb").read().decode("utf-8-sig").splitlines():
+            lines.append(raw.rstrip("\r\n"))
+        out = []
+        wrote_refresh = False
+        for line in lines:
+            if line.startswith("LONGBRIDGE_ACCESS_TOKEN="):
+                out.append(f"LONGBRIDGE_ACCESS_TOKEN={new_token}")
+            elif line.startswith("LONGBRIDGE_TOKEN_REFRESHED="):
+                out.append(f"LONGBRIDGE_TOKEN_REFRESHED={refreshed}")
+                wrote_refresh = True
+            else:
+                out.append(line)
+        if not any(l.startswith("LONGBRIDGE_ACCESS_TOKEN=") for l in out):
+            out.append(f"LONGBRIDGE_ACCESS_TOKEN={new_token}")
+        if not wrote_refresh:
+            out.append(f"LONGBRIDGE_TOKEN_REFRESHED={refreshed}")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("\n".join(out) + "\n")
+    except Exception as e:
+        logger.warning("长桥 token 写回 .env 失败: %s", e)
+
+
+def _http_url():
+    """region=cn 走国内端点, 其余默认官方端点。"""
+    region = os.environ.get("LONGBRIDGE_REGION", "").strip().lower()
+    if region in ("cn", "cnc"):
+        return "https://openapi.longbridge.cn"
+    return None
+
+
+def _build_config():
+    from longbridge.openapi import Config
+    return Config.from_apikey(
+        os.environ.get("LONGBRIDGE_APP_KEY", "").strip(),
+        os.environ.get("LONGBRIDGE_APP_SECRET", "").strip(),
+        os.environ.get("LONGBRIDGE_ACCESS_TOKEN", "").strip(),
+        http_url=_http_url(),
+    )
+
+
 def _config():
     global _CONFIG
     if _CONFIG is not None:
@@ -35,9 +137,9 @@ def _config():
     access_token = os.environ.get("LONGBRIDGE_ACCESS_TOKEN", "").strip()
     if not (app_key and app_secret and access_token):
         return None
+    _refresh_if_needed()
     try:
-        from longbridge.openapi import Config
-        _CONFIG = Config.from_apikey(app_key, app_secret, access_token)
+        _CONFIG = _build_config()
     except Exception as e:
         logger.warning("长桥配置失败: %s", e)
         _CONFIG = False
@@ -60,7 +162,7 @@ def _to_lb_symbol(code):
     if c.isdigit() and len(c) <= 5:
         return f"{c}.HK"
     if c.isdigit() and len(c) == 6:
-        if c.startswith(("60", "68", "9")):
+        if c.startswith(("60", "68", "9", "50")):
             return f"{c}.SH"
         if c.startswith(("00", "30", "20")):
             return f"{c}.SZ"

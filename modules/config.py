@@ -159,6 +159,14 @@ DAILY_PUSH = {
     "time_us": str(_DAILY.get("time_us", "06:30")),
 }
 
+# ── 行情多源交叉核对 ──
+_XC = _CFG.get("crosscheck", {})
+CROSSCHECK = {
+    "enabled": bool(_XC.get("enabled", False)),
+    "threshold": float(_XC.get("threshold", 2.0)),
+    "time": str(_XC.get("time", "16:40")),
+}
+
 
 def _apply_config(cfg):
     """从配置字典应用所有全局变量"""
@@ -167,7 +175,7 @@ def _apply_config(cfg):
     global FRAC, MAXPOS, ALERT, MAX_TOTAL, LAYERS
     global ALERT_THRESHOLDS, ALERT_COOLDOWN_MINUTES, ALERT_RETRIES, ALERT_CHANNELS
     global SPOT_MAX_AGE_MINUTES, FIN_MAX_AGE_DAYS, DIV_MAX_AGE_DAYS, HIST_MAX_AGE_DAYS
-    global DAILY_PUSH
+    global DAILY_PUSH, CROSSCHECK
 
     PORT_A = cfg.get("portfolio", {}).get("A", {})
     PORT_HK = cfg.get("portfolio", {}).get("HK", {})
@@ -213,6 +221,13 @@ def _apply_config(cfg):
         "announcement_days": int(_daily.get("announcement_days", 90)),
         "time_ah": str(_daily.get("time_ah", "16:30")),
         "time_us": str(_daily.get("time_us", "06:30")),
+    })
+
+    _xc = cfg.get("crosscheck", {})
+    CROSSCHECK.update({
+        "enabled": bool(_xc.get("enabled", False)),
+        "threshold": float(_xc.get("threshold", 2.0)),
+        "time": str(_xc.get("time", "16:40")),
     })
 
 

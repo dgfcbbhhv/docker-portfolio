@@ -1,4 +1,5 @@
 # market data utilities
+import logging
 
 import datetime, re, urllib.request
 
@@ -8,6 +9,7 @@ from .cache import load, save, retry, validate_spot
 
 
 
+logger = logging.getLogger(__name__)
 SINA_URL = "https://hq.sinajs.cn/list="
 
 TX_KLINE_URL = "http://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param="
@@ -254,7 +256,6 @@ def _fetch_tx_quotes(codes):
                           "amount": amount, "pe": pe, "pb": pb, "mcap": mcap}
 
         except (ValueError, IndexError):
-
             pass
 
     return rows
@@ -309,8 +310,8 @@ def _fetch_tx_histories(codes, days=500):
 
             return code, df
 
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.warning(f"[{code}] %s", _e, exc_info=True)
             return None
 
 
@@ -329,8 +330,8 @@ def _fetch_tx_histories(codes, days=500):
 
                     results[r[0]] = r[1]
 
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.warning(f"[{c}] %s", _e, exc_info=True)
 
     return results
 
@@ -398,8 +399,8 @@ def _fetch_sina_all_stocks():
 
             return pg, items
 
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.warning(f"[{pg}] %s", _e, exc_info=True)
 
             return pg, []
 
@@ -475,8 +476,8 @@ def _fetch_spot_tx_fallback(codes=None, min_amount=0):
 
                 all_quotes.update(f.result())
 
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.warning(f"[{i}] %s", _e, exc_info=True)
 
     rows = []
 
@@ -555,7 +556,6 @@ def _fetch_ths_one(code):
                         break
 
                 except (ValueError, TypeError):
-
                     pass
 
         bps = None
@@ -571,7 +571,6 @@ def _fetch_ths_one(code):
                     bps = float(str(v).strip().replace(",", ""))
 
                 except (ValueError, TypeError):
-
                     pass
 
         result = {"eps": eps, "bps": bps}
@@ -632,8 +631,8 @@ def _fetch_ths_pe_pb(codes):
 
                     fins[c] = r
 
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.warning(f"[{c}] %s", _e, exc_info=True)
 
     return fins
 
@@ -685,11 +684,19 @@ def fetch_spot_a(codes):
 
         if not m.empty: return m
 
-    raw, src=_fetch_spot_fallback([("sina", lambda: _fetch_sina(codes))], codes)
+    from modules.data.fallback import fetch_spot_with_fallback
+    raw_df, src = fetch_spot_with_fallback(codes, mkt="A")
+    if raw_df is None or raw_df.empty:
+        raise ConnectionError("行情源全部失败: A股多级降级未返回数据")
+    raw = raw_df.copy()
 
-    df=raw.copy()
+
+    df = raw.copy()
+
+
 
     df["pe"]=None; df["pb"]=None; df["mcap"]=None
+
 
     df["_src"]=src
 
@@ -719,9 +726,8 @@ def fetch_spot_a(codes):
 
                     df.at[idx,"mcap"]=q["mcap"]
 
-    except Exception:
-
-        pass
+    except Exception as _e:
+        logger.warning(f"[{codes}] %s", _e, exc_info=True)
 
     # market data utilities
 
@@ -758,9 +764,8 @@ def fetch_spot_a(codes):
 
                     df.at[idx,"pb"]=round(price/fi["bps"], 2)
 
-    except Exception:
-
-        pass
+    except Exception as _e:
+        logger.warning(f"[{codes}] %s", _e, exc_info=True)
 
     df=validate_spot(df); save("spot","a_all",df)
 
@@ -778,9 +783,13 @@ def fetch_spot_hk(codes):
 
         if not m.empty: return m
 
-    raw, src=_fetch_spot_fallback([("sina", lambda: _fetch_sina_hk(codes))], codes)
+    from modules.data.fallback import fetch_spot_with_fallback
+    raw_df, src = fetch_spot_with_fallback(codes, mkt="HK")
+    if raw_df is None or raw_df.empty:
+        raise ConnectionError("行情源全部失败: 港股多级降级未返回数据")
+    raw = raw_df.copy()
 
-    df=raw.copy()
+    df = raw.copy()
 
     df["pe"]=None; df["pb"]=None; df["mcap"]=None
 
@@ -830,8 +839,8 @@ def fetch_spot_a_all():
             df = df[df["amount"] > 50_000_000]
         _save_f("spot", "a_all_full", df)
         return df
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.warning(f"[fetch_spot_a_all] %s", _e, exc_info=True)
     try:
         df = _fetch_spot_tx_fallback(min_amount=50_000_000)
         if not df.empty and "n" in df.columns:
@@ -839,8 +848,8 @@ def fetch_spot_a_all():
             df = df[df["price"] > 0]
             _save_f("spot", "a_all_full", df)
         return df
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.warning(f"[fetch_spot_a_all] %s", _e, exc_info=True)
     return pd.DataFrame()
 
 def fetch_spot_a_filtered(amount_min=50_000_000):
@@ -871,9 +880,8 @@ def _fetch_hist_em_or_tx(code, start, end):
 
             return d
 
-    except Exception:
-
-        pass
+    except Exception as _e:
+        logger.warning(f"[{code}] %s", _e, exc_info=True)
 
     # market data utilities
 
@@ -891,9 +899,8 @@ def _fetch_hist_em_or_tx(code, start, end):
 
             return df[(df["date"] >= s) & (df["date"] <= e)]
 
-    except Exception:
-
-        pass
+    except Exception as _e:
+        logger.warning(f"[{code}] %s", _e, exc_info=True)
 
     return None
 
@@ -935,8 +942,8 @@ def fetch_vol(code, mkt="A"):
 
                 if v>0: save("vol",k,pd.DataFrame([{"v":v}])); return v
 
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.warning(f"[{code}] %s", _e, exc_info=True)
     # 港美股波动率备援：主数据源(akshare/美股接口)失败时用长桥日K计算真实已实现波动率，
     # 避免回落 20% 占位波动率导致蒙特卡洛回撤被判定"数据不足"。
     if mkt in ("H", "HK", "US"):
@@ -950,8 +957,8 @@ def fetch_vol(code, mkt="A"):
                     if _v > 0:
                         save("vol", k, pd.DataFrame([{"v": _v}]))
                         return _v
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.warning(f"[{code}] %s", _e, exc_info=True)
     return 0.2
 
 
@@ -988,8 +995,8 @@ def fetch_listing_days(code, mkt="A"):
 
             if days>0: save("listing",k,pd.DataFrame([{"days":days}])); return days
 
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.warning(f"[{code}] %s", _e, exc_info=True)
     return 9999
 
 
@@ -1028,8 +1035,8 @@ def fetch_sma(code, period=20, mkt="A"):
 
             if sma>0: save("sma",k,pd.DataFrame([{"sma":sma}])); return sma
 
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.warning(f"[{code}] %s", _e, exc_info=True)
     return None
 
 
@@ -1070,8 +1077,8 @@ def fetch_price_percentile(code, years=5, mkt="A"):
 
             save("pctl",k,pd.DataFrame([{"pctl":pctl}])); return pctl
 
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.warning(f"[{code}] %s", _e, exc_info=True)
     return 50.0
 
 
@@ -1098,8 +1105,8 @@ def fetch_vols(codes, mkt="A"):
 
                     r[c] = v
 
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.warning(f"[{c}] %s", _e, exc_info=True)
 
     return r
 
@@ -1127,8 +1134,8 @@ def fetch_smas(codes, period=20, mkt="A"):
 
                     r[c] = v
 
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.warning(f"[{c}] %s", _e, exc_info=True)
 
     return r
 
@@ -1156,7 +1163,7 @@ def fetch_price_percentiles(codes, years=5, mkt="A"):
 
                     r[c] = v
 
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.warning(f"[{c}] %s", _e, exc_info=True)
 
     return r

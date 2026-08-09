@@ -1,5 +1,7 @@
 """组合优化 + Monte Carlo 置信区间
+import logging
 
+logger = logging.getLogger(__name__)
 三种目标: 最大夏普 / 最小波动率 / 风险平价
 约束: 单只上限30%, 最少持有3只
 
@@ -8,6 +10,7 @@
 - 收益率假设为正态分布, 实际存在肥尾
 """
 import numpy as np
+np.random.seed(42)  # deterministic results
 import pandas as pd
 from scipy.optimize import minimize
 

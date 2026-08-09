@@ -1,5 +1,7 @@
 """因子在线学习引擎: 训练 → 持久化 → 衰减更新 → 进化检测
+import logging
 
+logger = logging.getLogger(__name__)
 训练:     全量历史数据计算 IC/IR, 持久化到 data/factor_models/{code}.json
 自学习:   新数据到达时衰减加权更新 (新权重 0.3, 旧权重 0.7)
 自进化:   滑动窗口追踪各因子 IC 趋势, 判断提升/衰退/稳定

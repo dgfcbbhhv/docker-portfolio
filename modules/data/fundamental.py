@@ -1,10 +1,12 @@
 """财务/分红/负债/现金流/审计 — 同花顺THS主数据源"""
+import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import pandas as pd
 import re
 import akshare as ak
 from .cache import load, save, retry
 
+logger = logging.getLogger(__name__)
 _MAX_WORKERS = 8
 
 
@@ -91,8 +93,8 @@ def _fetch_one_fin(c):
             cfps = _pct(r.get("每股经营现金流"))
             if info["eps"] and cfps and info["eps"] > 0:
                 info["ocf_ratio"] = round(cfps / info["eps"] * 100, 1)
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.warning(f"[{__name__}] %s", _e, exc_info=True)
 
     # ── 分红年数 + 总股本（用于计算市值） ──
     try:
@@ -109,8 +111,8 @@ def _fetch_one_fin(c):
             shares = d.iloc[0].get("总股本")
             if shares and float(shares) > 0:
                 info["total_shares"] = float(shares)
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.warning(f"[{__name__}] %s", _e, exc_info=True)
 
     save("fin", k, pd.DataFrame([info]))
     return c, info
@@ -124,8 +126,91 @@ def fetch_fins(codes):
             try:
                 c, info = f.result(timeout=180)
                 res[c] = info
-            except Exception:
+            except Exception as _e:
+                logger.warning(f"[{__name__}] %s", _e, exc_info=True)
+    return res
+
+
+def _num(info, *keys):
+    """从 yfinance info dict 取第一个非空数值。"""
+    for k in keys:
+        try:
+            v = info.get(k)
+            if v is not None:
+                v = float(v)
+                if v == v:  # not NaN
+                    return v
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def _fetch_one_fin_us(code):
+    """美股单只基本面：yfinance info + cashflow。
+
+    返回 (code, {roe, eps, bps, debt, pe, pb, ocf_ratio, div_years, total_shares})。
+    任一字段缺失保持 None（上层 _fmt 会写"数据不足"），不推断。
+    """
+    info = {"roe": None, "eps": None, "bps": None, "debt": None, "pe": None,
+            "pb": None, "ocf_ratio": None, "audit": True, "div_years": 0,
+            "total_shares": None}
+    from modules.data.market_us import _get_yf
+    yf = _get_yf()
+    if not yf:
+        return code, info
+    ticker = yf.Ticker(code)
+    ti = {}
+    # Yahoo 对数据中心 IP 常限流（YFRateLimitError）。此处快速重试 1 次即可：
+    # 失败的请求不值得拖慢每次刷新，靠 1h 缓存 + 后续刷新自然解限后再取。
+    for _attempt in range(2):
+        try:
+            ti = ticker.info or {}
+            break
+        except Exception:
+            if _attempt == 0:
+                import time as _time
+                _time.sleep(1.0)
+    if not ti:
+        return code, info
+    info["pe"] = _num(ti, "trailingPE") or _num(ti, "forwardPE")
+    info["pb"] = _num(ti, "priceToBook")
+    roe = _num(ti, "returnOnEquity")
+    if roe is not None:
+        info["roe"] = round(roe * 100, 2)
+    info["eps"] = _num(ti, "trailingEps")
+    info["bps"] = _num(ti, "bookValue")
+    info["total_shares"] = _num(ti, "sharesOutstanding")
+    # 资产负债率：优先 D/E 换算 D/(D+E)；缺则留空
+    de = _num(ti, "debtToEquity")
+    if de is not None:
+        de_pct = de if abs(de) > 1 else de * 100
+        info["debt"] = round(de_pct / (de_pct + 100.0) * 100.0, 2) if (de_pct + 100.0) > 0 else None
+    # 经营现金流 / 净利润
+    try:
+        cf = ticker.cashflow
+        if cf is not None and not cf.empty:
+            try:
+                ocf = cf.loc["Operating Cash Flow"].iloc[0]
+                ni = cf.loc["Net Income"].iloc[0]
+                if ocf is not None and ni and float(ni) != 0:
+                    info["ocf_ratio"] = round(float(ocf) / float(ni) * 100.0, 1)
+            except (KeyError, IndexError, TypeError, ValueError):
                 pass
+    except Exception as _e:
+        logger.warning(f"[{__name__}] %s", _e, exc_info=True)
+    return code, info
+
+
+def fetch_fins_us(codes):
+    res = {}
+    with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as pool:
+        fut = {pool.submit(_fetch_one_fin_us, c): c for c in codes}
+        for f in as_completed(fut):
+            try:
+                c, info = f.result(timeout=180)
+                res[c] = info
+            except Exception as _e:
+                logger.warning(f"[{__name__}] %s", _e, exc_info=True)
     return res
 
 
@@ -139,8 +224,8 @@ def fetch_divs(codes):
             try:
                 c, d = f.result(timeout=180)
                 r[c] = d
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.warning(f"[{__name__}] %s", _e, exc_info=True)
     return r
 
 
@@ -154,8 +239,8 @@ def fetch_divs_hk(codes):
             try:
                 c, d = f.result(timeout=180)
                 r[c] = d
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.warning(f"[{__name__}] %s", _e, exc_info=True)
     return r
 
 
@@ -238,13 +323,13 @@ def _fetch_one_div_us(c):
                     if per_share > 0:
                         result["ttm"] = round(per_share, 4)
                         result["lfy"] = round(per_share, 4)
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.warning(f"[{__name__}] %s", _e, exc_info=True)
 
     try:
         save("div", k, pd.DataFrame([result]))
-    except Exception:
-        pass  # 缓存失败不影响返回值
+    except Exception as _e:
+        logger.warning(f"[{__name__}] %s", _e, exc_info=True)  # 缓存失败不影响返回值
     return c, result
 
 
@@ -257,8 +342,8 @@ def fetch_divs_us(codes):
             try:
                 c, d = f.result(timeout=180)
                 r[c] = d
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.warning(f"[{__name__}] %s", _e, exc_info=True)
     return r
 
 
@@ -292,8 +377,8 @@ def _fetch_one_fin_hk(c):
             info["total_shares"] = _pct(r.get("已发行股本(股)"))
             # 股息: 从财务指标里拿每股股息TTM
             div_ttm = _pct(r.get("每股股息TTM(港元)"))
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.warning(f"[{__name__}] %s", _e, exc_info=True)
 
     # 尝试通过财务分析指标获取更多数据 (如负债率)
     try:
@@ -304,8 +389,8 @@ def _fetch_one_fin_hk(c):
                 if debt_raw is not None:
                     info["debt"] = float(debt_raw)
                     break
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.warning(f"[{__name__}] %s", _e, exc_info=True)
 
     # 分红数据 (使用已有的 fetch_divs_hk 逻辑的底层函数)
     try:
@@ -325,8 +410,8 @@ def _fetch_one_fin_hk(c):
             shares_raw = df_.iloc[0].get("总股本") if "总股本" in df_.columns else None
             if shares_raw and float(shares_raw) > 0:
                 info["total_shares"] = float(shares_raw)
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.warning(f"[{__name__}] %s", _e, exc_info=True)
 
     save("fin", k, pd.DataFrame([info]))
     return c, info
@@ -341,8 +426,8 @@ def fetch_fins_hk(codes):
             try:
                 c, info = f.result(timeout=180)
                 res[c] = info
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.warning(f"[{__name__}] %s", _e, exc_info=True)
     return res
 
 def _fetch_one_div(c):
@@ -389,8 +474,8 @@ def _fetch_one_div(c):
                         lfy_total += div_ps
             result["ttm"] = round(ttm_total, 4)
             result["lfy"] = round(lfy_total, 4)
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.warning(f"[{__name__}] %s", _e, exc_info=True)
     save("div", k, pd.DataFrame([result]))
     return c, result
 
@@ -444,8 +529,8 @@ def _fetch_one_div_hk(c):
                         lfy_total += div_ps
             result["ttm"] = round(ttm_total, 4)
             result["lfy"] = round(lfy_total, 4)
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.warning(f"[{__name__}] %s", _e, exc_info=True)
     save("div", k, pd.DataFrame([result]))
     return c, result
 
@@ -506,8 +591,8 @@ def _fetch_one_div_reit(c):
                     lfy_total += div_ps
         result["ttm"] = round(ttm_total, 4)
         result["lfy"] = round(lfy_total, 4)
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.warning(f"[{__name__}] %s", _e, exc_info=True)
     save("div", k, pd.DataFrame([result]))
     return c, result
 
@@ -521,6 +606,6 @@ def fetch_divs_reit(codes):
             try:
                 c, d = f.result(timeout=180)
                 r[c] = d
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.warning(f"[{__name__}] %s", _e, exc_info=True)
     return r

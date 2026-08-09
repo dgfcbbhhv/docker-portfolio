@@ -1,6 +1,8 @@
 """
 买卖信号引擎 v3 — 加权评分 + 多级信号 + 可读说明 (优化版)
+import logging
 
+logger = logging.getLogger(__name__)
 优化点:
 1. 提取公共评分函数，减少重复代码
 2. 使用列表驱动替代多重if-else
@@ -289,8 +291,8 @@ def load_score_history():
         try:
             with open(HISTORY_FILE, "r", encoding="utf-8") as f:
                 return json.load(f)
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.warning(f"[{__name__}] %s", _e, exc_info=True)
     return {}
 
 

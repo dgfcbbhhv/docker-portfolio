@@ -101,6 +101,7 @@ def test_dry_run_no_send(monkeypatch):
 def test_send_non_dry(monkeypatch):
     """非 dry-run 触发推送。"""
     monkeypatch.setattr(dpusher, "_freshness_ok", lambda: True)
+    monkeypatch.setattr(dpusher, "_already_pushed", lambda *a, **k: False)
     sent_calls = []
     monkeypatch.setattr(dpusher, "build_picks",
                         lambda include_announcements=True: {
@@ -112,20 +113,21 @@ def test_send_non_dry(monkeypatch):
                             ],
                             "skipped": [],
                         })
-    monkeypatch.setattr(dpusher.AlertSender, "send",
-                        lambda self, *a, **k: sent_calls.append(a) or True)
+    monkeypatch.setattr(dpusher.AlertSender, "send_multi",
+                        lambda self, *a, **k: sent_calls.append(a) or (True, "email"))
     sent, msg = dpusher.build_and_send("AH", dry_run=False,
                                        day=datetime.date(2026, 7, 31),
                                        skip_trading_check=True)
     assert sent is True
     assert len(sent_calls) == 1
     assert "招商银行" in sent_calls[0][1]
-    assert "可加仓" in sent_calls[0][1]
+    assert "建议加仓" in sent_calls[0][1]
 
 
 def test_market_filter_us(monkeypatch):
     """US 市场只保留美股标的。"""
     monkeypatch.setattr(dpusher, "_freshness_ok", lambda: True)
+    monkeypatch.setattr(dpusher, "_already_pushed", lambda *a, **k: False)
     sent_calls = []
     monkeypatch.setattr(dpusher, "build_picks",
                         lambda include_announcements=True: {
@@ -140,8 +142,8 @@ def test_market_filter_us(monkeypatch):
                             ],
                             "skipped": [],
                         })
-    monkeypatch.setattr(dpusher.AlertSender, "send",
-                        lambda self, *a, **k: sent_calls.append(a) or True)
+    monkeypatch.setattr(dpusher.AlertSender, "send_multi",
+                        lambda self, *a, **k: sent_calls.append(a) or (True, "email"))
     sent, msg = dpusher.build_and_send("US", dry_run=False,
                                        day=datetime.date(2026, 7, 31),
                                        skip_trading_check=True)

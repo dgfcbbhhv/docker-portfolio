@@ -1,5 +1,7 @@
 """缓存层 + 指数退避重试 + 并发控制 + 输入验证 + 请求超时保护
+import logging
 
+logger = logging.getLogger(__name__)
 TTL:
   spot:  3600s (1h)
   hist:  3600s (1h)
@@ -124,8 +126,8 @@ def retry(fn=None, max_n=5, delay=2.0, timeout=_DEFAULT_TIMEOUT):
                         if "/app/modules/" in fr.filename and fr.filename.endswith(".py"):
                             caller = "%s:%s" % (fr.filename.rsplit("/", 1)[-1], fr.lineno)
                             break
-                except Exception:
-                    pass
+                except Exception as _e:
+                    logger.warning(f"[{__name__}] %s", _e, exc_info=True)
                 logger.warning(f"API调用异常 (第{i+1}/{n}次): {type(e).__name__}: {e} [{caller}]")
             if i < n - 1:
                 time.sleep(delay * (2 ** i) + random.uniform(0, 1))

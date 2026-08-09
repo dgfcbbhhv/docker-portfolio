@@ -1,5 +1,7 @@
 """Streamlit 数据获取缓存包装（住在数据缝，可被测试触达）。
+import logging
 
+logger = logging.getLogger(__name__)
 原内联于 app.py 顶部，下沉到数据层以提升 locality：
 缓存策略与数据获取同处一层，app 视图只关心取用。
 """
@@ -10,7 +12,7 @@ import streamlit as st
 
 from modules.data.market import fetch_spot_a, fetch_spot_hk, fetch_vols
 from modules.data.fundamental import (
-    fetch_fins, fetch_fins_hk, fetch_divs, fetch_divs_hk, fetch_divs_us,
+    fetch_fins, fetch_fins_hk, fetch_fins_us, fetch_divs, fetch_divs_hk, fetch_divs_us,
 )
 
 
@@ -43,8 +45,8 @@ def fetch_factor_history_cached(code, market):
             df = fetch_us_hist(code, days=750)
             if df is not None:
                 return df
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.warning(f"[{__name__}] %s", _e, exc_info=True)
         return None
     if market == "HK":
         try:
@@ -56,8 +58,8 @@ def fetch_factor_history_cached(code, market):
                                        "最低": "low", "成交量": "volume"})
                 d["date"] = pd.to_datetime(d["date"])
                 return d
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.warning(f"[{__name__}] %s", _e, exc_info=True)
     from modules.data.market import _fetch_hist_em_or_tx
     return _fetch_hist_em_or_tx(code, start, end)
 
@@ -80,6 +82,11 @@ def fetch_fins_cached(codes_tuple):
 @st.cache_data(ttl=3600)
 def fetch_fins_hk_cached(codes_tuple):
     return fetch_fins_hk(list(codes_tuple))
+
+
+@st.cache_data(ttl=3600)
+def fetch_fins_us_cached(codes_tuple):
+    return fetch_fins_us(list(codes_tuple))
 
 
 @st.cache_data(ttl=300)  # 5分钟缓存波动率

@@ -109,11 +109,16 @@ def test_update_paper_portfolio_t1_open(tmp_path, monkeypatch):
     monkeypatch.setattr(pt, "SNAPSHOT_FILE", str(tmp_path / "snap.json"))
     monkeypatch.setattr(pt, "NAV_FILE", str(tmp_path / "nav.json"))
     monkeypatch.setattr(pt, "VALIDATION_FILE", str(tmp_path / "val.json"))
+    # paper_executor 以 from-import 复制了 PORTFOLIO_FILE 常量, 需同步 mock
+    from modules import paper_executor as pe
+    monkeypatch.setattr(pe, "PORTFOLIO_FILE", str(tmp_path / "pf.json"))
 
     def fake_bar(code, date):
         return {"open": 10.1, "close": 10.3, "high": 10.4, "low": 10.0,
                 "prev_close": 10.0, "suspended": False}
 
+    # paper_executor 内部经 _fetch_execution_bars 调用本模块的 _fetch_a_bar_for_date, 需同步 mock
+    monkeypatch.setattr(pe, "_fetch_a_bar_for_date", fake_bar)
     monkeypatch.setattr(pt, "_fetch_a_bar_for_date", fake_bar)
 
     snaps = [_snap("600036", price=10.0, kelly=10.0)]

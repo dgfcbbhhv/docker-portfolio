@@ -1,4 +1,5 @@
 """纯计算引擎：不依赖 Streamlit，供 App 与后台预警进程共用同一套口径。"""
+import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import numpy as np
@@ -9,6 +10,7 @@ from modules.lishing import calc as lishing_calc
 from modules.signals import evaluate_growth
 
 
+logger = logging.getLogger(__name__)
 def _default_factor_multiplier(code):
     try:
         from modules.factor_selector import get_kelly_multiplier
@@ -168,8 +170,8 @@ def build_rows(portfolio, fins, divs, vols, spot, label,
                     ma20_above_ma60 = ma20 > ma60
                     price_above_ma60 = p > ma60
                     ma60_above_ma120 = (ma60 > ma120) if ma120 else None
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.warning(f"[{__name__}] %s", _e, exc_info=True)
             gr_fb = manual_us_growth.get(code, {})
             if pe_val and not pd.isna(pe_val):
                 if pe_val < 25:

@@ -16,3 +16,6 @@ backups/
 .env.*
 !.env.example
 *.log
+
+# 备份/临时残留
+*.bak*

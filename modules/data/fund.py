@@ -1,9 +1,11 @@
 """基金/REIT/ETF 数据模块"""
+import logging
 import time
 import pandas as pd
 import akshare as ak
 from .cache import retry, load, save, logger
 
+logger = logging.getLogger(__name__)
 REIT_TYPES = {
     "保障房": ["保障房", "保租房", "安居", "租赁住房", "有巢"],
     "产业园区": ["产业园", "产园", "张江", "蛇口", "联东", "临港", "软件园", "外高桥"],

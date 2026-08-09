@@ -8,8 +8,10 @@
 import datetime
 import pandas as pd
 import numpy as np
+np.random.seed(42)  # deterministic results
 import time
 import random
+random.seed(42)  # deterministic results
 from typing import Dict, Optional, Tuple
 import logging
 

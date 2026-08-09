@@ -28,7 +28,7 @@ def test_send_failure_logged(tmp_path, monkeypatch):
 def test_send_multi_falls_back_to_next_channel(monkeypatch):
     sender = AlertSender(cfg={})
 
-    def fake_send(title, content, channel="email", retries=3):
+    def fake_send(title, content, channel="email", retries=3, meta=None):
         return channel == "webhook"
 
     monkeypatch.setattr(sender, "send", fake_send)

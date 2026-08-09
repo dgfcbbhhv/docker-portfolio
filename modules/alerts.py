@@ -1,5 +1,7 @@
 """多通道预警系统
+import logging
 
+logger = logging.getLogger(__name__)
 通道: 邮件 / 企业微信 / Telegram / Bark / 通用 Webhook
 触发: 股价跌幅 / 股息率变动 / Kelly变化 / 李氏评分下降 / 论点破坏者
 
@@ -94,10 +96,10 @@ class AlertSender:
         self._log_failure(title, content, channel, last_err)
         return False
 
-    def send_multi(self, title, content, channels=None, retries=3):
+    def send_multi(self, title, content, channels=None, retries=3, meta=None):
         """按顺序尝试多个通道，任一成功即返回 (True, channel)。"""
         for ch in (channels or ["email", "wechat", "telegram", "webhook"]):
-            if self.send(title, content, channel=ch, retries=retries):
+            if self.send(title, content, channel=ch, retries=retries, meta=meta):
                 return True, ch
         return False, None
 
@@ -121,8 +123,8 @@ class AlertSender:
         try:
             with open(FAILURE_LOG_PATH, "a", encoding="utf-8") as f:
                 f.write(f"{datetime.datetime.now().isoformat()} | {channel} | {title} | {err}\n")
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.warning(f"[{__name__}] %s", _e, exc_info=True)
 
     def _email(self, t, c):
         try:
@@ -234,8 +236,8 @@ class AlertSender:
                     j = json.loads(body)
                     if isinstance(j, dict) and "code" in j:
                         return int(j["code"]) == 200
-                except Exception:
-                    pass
+                except Exception as _e:
+                    logger.warning(f"[{__name__}] %s", _e, exc_info=True)
                 return True
         except Exception:
             return False
@@ -249,6 +251,7 @@ class AlertSender:
         """
         import base64
         import random
+        random.seed(42)  # deterministic results
         import string
         import subprocess
         from urllib.parse import urlencode
@@ -280,8 +283,8 @@ class AlertSender:
                     j = json.loads(body)
                     if isinstance(j, dict) and "code" in j:
                         return int(j["code"]) == 200
-                except Exception:
-                    pass
+                except Exception as _e:
+                    logger.warning(f"[{__name__}] %s", _e, exc_info=True)
                 return True
         except Exception:
             return False
@@ -349,8 +352,8 @@ def log_alerts(alerts):
         try:
             existing = pd.read_csv(LOG_PATH)
             df = pd.concat([existing, df], ignore_index=True)
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.warning(f"[{__name__}] %s", _e, exc_info=True)
     df.to_csv(LOG_PATH, index=False, encoding="utf-8-sig")
 
 

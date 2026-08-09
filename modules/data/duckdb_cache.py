@@ -1,9 +1,11 @@
 """DuckDB本地数据缓存模块
 参考 EasyXT 的 DuckDB 数据存储方案，大幅提升全市场扫描速度（约10倍）
 """
+import logging
 import os, logging
 import pandas as pd
 
+logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 

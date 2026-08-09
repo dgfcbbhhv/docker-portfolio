@@ -33,6 +33,14 @@ if [ "$MODE" = "alert-worker" ]; then
     exec setpriv --reuid=app --regid=app --init-groups python -m modules.alert_worker
 fi
 
+# MODE=portfolio：仅启动 Streamlit 前端，不内嵌 alert_worker。
+# 保证整个系统只有一个长桥客户端进程（专职 alert-worker 容器），
+# 避免双容器并发调用同一 access token 被长桥端 401004 互踢。
+if [ "$MODE" = "portfolio" ]; then
+    echo "[entrypoint] portfolio mode (frontend only, no embedded alert_worker)"
+    exec setpriv --reuid=app --regid=app --init-groups streamlit run app.py --server.port=8501 --server.address=0.0.0.0
+fi
+
 # 启动预警后台进程（日志重定向到文件，不阻塞主进程）
 echo "[entrypoint] starting alert_worker..."
 AS_APP python -m modules.alert_worker >> /app/data/logs/alert_worker.stdout.log 2>&1 &

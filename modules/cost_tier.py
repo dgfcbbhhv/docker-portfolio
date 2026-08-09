@@ -1,7 +1,9 @@
 import json, os, csv
 from io import StringIO
 
-COST_FILE = os.path.join(os.path.dirname(__file__), "..", "notes", "cost_tiers.json")
+from modules.paths import notes_dir
+
+COST_FILE = os.path.join(notes_dir(), "cost_tiers.json")
 
 def _load():
     if not os.path.exists(COST_FILE):

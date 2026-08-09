@@ -3,10 +3,12 @@
 亚洲股市AI泡沫多空监测器模块测试
 在项目根目录运行: python3 -m modules.asia_monitor.test_module
 """
+import logging
 
 import sys
 import os
 
+logger = logging.getLogger(__name__)
 # 确保项目根目录在路径中
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if project_root not in sys.path:

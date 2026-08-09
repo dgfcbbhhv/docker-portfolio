@@ -1,5 +1,7 @@
 """A 股券商成交导入与推送关联。
+import logging
 
+logger = logging.getLogger(__name__)
 支持常见券商导出的成交明细表（如 Table_*.xlsx）：
   成交日期, 成交时间, 证券代码, 证券名称, 委托方向, 成交数量, 成交均价,
   成交金额, 佣金, 其他费用, 印花税, 过户费, 资金余额, 股份余额,
@@ -186,8 +188,8 @@ def import_records(records):
         try:
             from modules.execution_log import confirm_from_broker
             confirm_from_broker()
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.warning(f"[{__name__}] %s", _e, exc_info=True)
     return {"added": added, "duplicates": duplicates, "records": existing[-20:]}
 
 

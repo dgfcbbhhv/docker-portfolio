@@ -185,11 +185,10 @@ def calc(row, market="A"):
         v = 1.0 if mcap > 1000 else (0.8 if mcap > 500 else (0.6 if mcap > 200 else (0.4 if mcap > 100 else (0.2 if mcap > 50 else 0.1))))
         _add("mcap", v, DIMENSIONS["mcap"]["weight"], "市值评分")
 
-    # 审计意见（能拉到基础数据即视为通过）
-    _add("audit", 1.0, DIMENSIONS["audit"]["weight"], "审计意见")
-
-    # 质押率（暂无可靠数据源，默认满分）
-    _add("pledge", 1.0, DIMENSIONS["pledge"]["weight"], "质押率")
+    # 审计意见 / 质押率: 当前无可靠数据源, 显式计为缺失, 不默认给满分,
+    # 避免评分天花板虚高。后续接入真实数据源后改为实际计分。
+    _add("audit", 0.2, DIMENSIONS["audit"]["weight"], "审计意见", missing=True)
+    _add("pledge", 0.2, DIMENSIONS["pledge"]["weight"], "质押率", missing=True)
 
     # 关联交易
     if use_rpt:
