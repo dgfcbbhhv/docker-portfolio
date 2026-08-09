@@ -4,7 +4,7 @@ import logging
 import akshare as ak
 import pandas as pd
 
-from .cache import load, logger, retry, save
+from .cache import load, retry, save
 
 logger = logging.getLogger(__name__)
 REIT_TYPES = {
@@ -119,7 +119,7 @@ def fetch_fund_dividends(year=None):
     frames = []
     for y in [this_year, this_year - 1]:
         try:
-            frames.append(retry(lambda: ak.fund_fh_em(year=str(y)), max_n=3))
+            frames.append(retry(lambda y=y: ak.fund_fh_em(year=str(y)), max_n=3))
         except Exception:
             continue
     if not frames:

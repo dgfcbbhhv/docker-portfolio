@@ -9,10 +9,6 @@
 """
 
 from modules.risk import (
-    CORR_BASE,
-    HORIZON_DAYS,
-    N_SIMS,
-    PLACEHOLDER_VOL,
     industry_collapse_loss,
     industry_of,
     monte_carlo_p95_drawdown,
