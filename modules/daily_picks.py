@@ -288,6 +288,8 @@ def build_picks(include_announcements=True):
             "category": cat,
             "held": is_held,
             "market": market,
+            "price": float(r.get("price", 0) or 0),
+            "kelly_final": float(r.get("kelly_final", 0) or 0),
             "lines": lines,
             "announcement": ann,
         })

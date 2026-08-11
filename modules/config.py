@@ -45,7 +45,11 @@ _DEFAULTS = {
         "time_ah": "16:30",
         "time_us": "06:30",
     },
-
+    "paper_trade": {
+        "auto_follow_picks": True,
+        "picks_buy_pct": 10.0,
+        "picks_reduce_ratio": 0.5,
+    },
 }
 
 
@@ -170,7 +174,13 @@ CROSSCHECK = {
     "time": str(_XC.get("time", "16:40")),
 }
 
-
+# ── 模拟盘 ──
+_PT = _CFG.get("paper_trade", {})
+PAPER_TRADE = {
+    "auto_follow_picks": bool(_PT.get("auto_follow_picks", True)),
+    "picks_buy_pct": float(_PT.get("picks_buy_pct", 10.0)),
+    "picks_reduce_ratio": float(_PT.get("picks_reduce_ratio", 0.5)),
+}
 
 
 def _apply_config(cfg):
@@ -181,6 +191,7 @@ def _apply_config(cfg):
     global ALERT_THRESHOLDS, ALERT_COOLDOWN_MINUTES, ALERT_BATCH_MIN, ALERT_RETRIES, ALERT_CHANNELS
     global SPOT_MAX_AGE_MINUTES, FIN_MAX_AGE_DAYS, DIV_MAX_AGE_DAYS, HIST_MAX_AGE_DAYS
     global DAILY_PUSH, CROSSCHECK
+    global PAPER_TRADE
 
     PORT_A = cfg.get("portfolio", {}).get("A", {})
     PORT_HK = cfg.get("portfolio", {}).get("HK", {})
@@ -236,7 +247,12 @@ def _apply_config(cfg):
         "time": str(_xc.get("time", "16:40")),
     })
 
-
+    _pt = cfg.get("paper_trade", {})
+    PAPER_TRADE.update({
+        "auto_follow_picks": bool(_pt.get("auto_follow_picks", True)),
+        "picks_buy_pct": float(_pt.get("picks_buy_pct", 10.0)),
+        "picks_reduce_ratio": float(_pt.get("picks_reduce_ratio", 0.5)),
+    })
 
 
 def reload():

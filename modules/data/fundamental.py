@@ -446,6 +446,22 @@ def fetch_fins_hk(codes):
                 logger.warning(f"[{__name__}] %s", _e, exc_info=True)
     return res
 
+def _div_save_or_fallback(k, result):
+    """统一分红防护：只有拿到真实正数才落盘；抓取失败/为空时回退
+    上次有效缓存，避免用 0/0 覆盖好数据。A/HK/REIT 共用同一逻辑。"""
+    if result["ttm"] > 0 or result["lfy"] > 0:
+        save("div", k, pd.DataFrame([result]))
+        return result
+    df_expired = load("div", k, allow_expired=True)
+    if df_expired is not None:
+        row = df_expired.iloc[0]
+        if "ttm" in row.index and "lfy" in row.index:
+            old = {"ttm": float(row["ttm"]), "lfy": float(row["lfy"])}
+            if old["ttm"] > 0 or old["lfy"] > 0:
+                return old
+    return result
+
+
 def _fetch_one_div(c):
     k = f"{c}_div"
     df = load("div", k)
@@ -453,14 +469,11 @@ def _fetch_one_div(c):
         row = df.iloc[0]
         if "ttm" in row.index and "lfy" in row.index:
             return c, {"ttm": float(row["ttm"]), "lfy": float(row["lfy"])}
-    df_expired = load("div", k, allow_expired=True)
-    if df_expired is not None:
-        row = df_expired.iloc[0]
-        if "ttm" in row.index and "lfy" in row.index:
-            return c, {"ttm": float(row["ttm"]), "lfy": float(row["lfy"])}
     result = {"ttm": 0.0, "lfy": 0.0}
     try:
         df_ = _safe_fhps(c)
+        if df_.empty or "除权除息日" not in df_.columns:
+            raise ValueError("分红明细缺失或字段异常")
         df_ = df_[df_["除权除息日"].notna()].sort_values("除权除息日", ascending=False)
         if not df_.empty:
             now = pd.Timestamp.now()
@@ -492,8 +505,7 @@ def _fetch_one_div(c):
             result["lfy"] = round(lfy_total, 4)
     except Exception as _e:
         logger.warning(f"[{__name__}] %s", _e, exc_info=True)
-    save("div", k, pd.DataFrame([result]))
-    return c, result
+    return c, _div_save_or_fallback(k, result)
 
 def _fetch_one_div_hk(c):
     k = f"{c}_div_hk"
@@ -502,14 +514,11 @@ def _fetch_one_div_hk(c):
         row = df.iloc[0]
         if "ttm" in row.index and "lfy" in row.index:
             return c, {"ttm": float(row["ttm"]), "lfy": float(row["lfy"])}
-    df_expired = load("div", k, allow_expired=True)
-    if df_expired is not None:
-        row = df_expired.iloc[0]
-        if "ttm" in row.index and "lfy" in row.index:
-            return c, {"ttm": float(row["ttm"]), "lfy": float(row["lfy"])}
     result = {"ttm": 0.0, "lfy": 0.0}
     try:
         df_ = retry(lambda: ak.stock_hk_dividend_payout_em(symbol=c))
+        if df_.empty or "除净日" not in df_.columns:
+            raise ValueError("分红明细缺失或字段异常")
         df_ = df_[df_["除净日"].notna()].sort_values("除净日", ascending=False)
         if not df_.empty:
             now = pd.Timestamp.now()
@@ -547,8 +556,7 @@ def _fetch_one_div_hk(c):
             result["lfy"] = round(lfy_total, 4)
     except Exception as _e:
         logger.warning(f"[{__name__}] %s", _e, exc_info=True)
-    save("div", k, pd.DataFrame([result]))
-    return c, result
+    return c, _div_save_or_fallback(k, result)
 
 
 _FUND_FH_CACHE = {}
@@ -569,11 +577,6 @@ def _fetch_one_div_reit(c):
     df = load("div", k)
     if df is not None:
         row = df.iloc[0]
-        if "ttm" in row.index and "lfy" in row.index:
-            return c, {"ttm": float(row["ttm"]), "lfy": float(row["lfy"])}
-    df_expired = load("div", k, allow_expired=True)
-    if df_expired is not None:
-        row = df_expired.iloc[0]
         if "ttm" in row.index and "lfy" in row.index:
             return c, {"ttm": float(row["ttm"]), "lfy": float(row["lfy"])}
     result = {"ttm": 0.0, "lfy": 0.0}
@@ -609,8 +612,7 @@ def _fetch_one_div_reit(c):
         result["lfy"] = round(lfy_total, 4)
     except Exception as _e:
         logger.warning(f"[{__name__}] %s", _e, exc_info=True)
-    save("div", k, pd.DataFrame([result]))
-    return c, result
+    return c, _div_save_or_fallback(k, result)
 
 
 def fetch_divs_reit(codes):

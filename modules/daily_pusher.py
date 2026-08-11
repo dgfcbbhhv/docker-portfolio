@@ -192,6 +192,11 @@ def build_and_send(market="AH", dry_run=False, day=None, skip_trading_check=Fals
             ensure_pending_from_audit()
         except Exception:
             logger.exception("execution log sync failed")
+        try:
+            from modules.paper_picks import apply_picks_to_paper
+            apply_picks_to_paper(result, signal_date=today_s)
+        except Exception:
+            logger.exception("paper picks auto-exec failed")
     logger.info("选股推送 %s: %s (%d 只, 通道 %s)", market, ok,
                 len(result.get("picks", [])), channel)
     return ok, msg

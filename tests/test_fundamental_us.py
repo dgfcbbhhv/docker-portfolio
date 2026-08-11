@@ -97,8 +97,20 @@ def test_fetch_one_fin_us_missing_fields(monkeypatch):
     assert info["debt"] is None
 
 
-def test_fetch_one_fin_us_yf_missing(monkeypatch):
+def test_fetch_one_fin_us_yf_missing_fmp_fallback(monkeypatch):
+    """yfinance 不可用时降级 FMP 兜底，FMP 有数据则返回真实字段。"""
     monkeypatch.setattr("modules.data.market_us._get_yf", lambda: None)
+    monkeypatch.setattr("modules.data.fmp.fetch_us_finance",
+                        lambda code: {"pe": 37.82, "roe": 76.33})
+    code, info = fd._fetch_one_fin_us("NVDA")
+    assert info["pe"] is not None
+
+
+def test_fetch_one_fin_us_yf_and_fmp_missing(monkeypatch):
+    """yfinance 与 FMP 均不可用时，字段应保持 None，不推断。"""
+    monkeypatch.setattr("modules.data.market_us._get_yf", lambda: None)
+    monkeypatch.setattr("modules.data.fmp.fetch_us_finance",
+                        lambda code: {})
     code, info = fd._fetch_one_fin_us("NVDA")
     assert info["pe"] is None
     assert info["roe"] is None
