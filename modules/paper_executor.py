@@ -42,6 +42,14 @@ def _get_paper_portfolio():
             "created_at": datetime.date.today().isoformat(),
         }
         _save_json(PORTFOLIO_FILE, pf)
+    if not pf.get("capital"):
+        cost = sum(float(p.get("avg_cost", 0) or 0) * float(p.get("shares", 0) or 0)
+                   for p in (pf.get("positions", {}) or {}).values())
+        pf["capital"] = VIRTUAL_CAPITAL
+        pf["cash"] = max(VIRTUAL_CAPITAL - cost, 0.0)
+        logger.warning("[paper] 旧格式组合缺 capital, 补全为 %.0f (已持成本 %.0f)",
+                       VIRTUAL_CAPITAL, cost)
+        _save_json(PORTFOLIO_FILE, pf)
     pf.setdefault("pending_orders", [])
     pf.setdefault("skipped_orders", [])
     return pf
