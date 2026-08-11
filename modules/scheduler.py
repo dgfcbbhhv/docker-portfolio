@@ -65,6 +65,23 @@ class Scheduler:
         }
         logger.info(f"添加每日任务: {name}, 时刻: {hhmm}")
 
+    def add_weekly_task(self, name, func, hhmm, weekday):
+        """添加每周固定时刻任务。weekday: 0=周一 .. 6=周日; 当天到点执行一次。"""
+        daily = _parse_hhmm(hhmm)
+        if daily is None:
+            raise ValueError(f"非法时刻: {hhmm!r}, 应为 'HH:MM'")
+        weekday = int(weekday) % 7
+        self._tasks[name] = {
+            "func": func,
+            "type": "weekly",
+            "interval": None,
+            "time": (daily[0], daily[1]),
+            "weekday": weekday,
+            "last_run": None,   # 记录 (yyyy-mm-dd, weekday) 供当日去重
+            "run_immediately": False,
+        }
+        logger.info(f"添加每周任务: {name}, 每周{weekday+1} {hhmm}")
+
     def remove_task(self, name):
         """移除定时任务"""
         if name in self._tasks:
@@ -98,6 +115,8 @@ class Scheduler:
                 
                 if task["type"] == "daily":
                     should_run = self._should_run_daily(task, now)
+                elif task["type"] == "weekly":
+                    should_run = self._should_run_weekly(task, now)
                 else:
                     if task["last_run"] is None:
                         if task["run_immediately"]:
@@ -114,7 +133,8 @@ class Scheduler:
                         logger.info(f"执行定时任务: {name}")
                         task["func"]()
                         task["last_run"] = (now.date().isoformat()
-                                            if task["type"] == "daily" else now)
+                                            if task["type"] in ("daily", "weekly")
+                                            else now)
                     except Exception as e:
                         logger.error(f"定时任务 {name} 执行失败: {e}")
             
@@ -128,6 +148,17 @@ class Scheduler:
             return False
         target = datetime.time(h, m)
         # 当前时刻 >= 目标时刻(秒级容差, 时钟刚好跳变时下个循环补跑)
+        return now.time().replace(microsecond=0) >= target
+
+    def _should_run_weekly(self, task, now):
+        """每周任务: 指定星期 + 到点, 且本周该日未执行过。"""
+        if now.weekday() != task["weekday"]:
+            return False
+        today = now.date().isoformat()
+        if task["last_run"] == today:
+            return False
+        h, m = task["time"]
+        target = datetime.time(h, m)
         return now.time().replace(microsecond=0) >= target
 
     def is_trading_hours(self):

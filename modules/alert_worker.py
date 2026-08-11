@@ -252,6 +252,22 @@ class AlertWorker:
         except Exception as e:
             logger.exception("paper daily check failed: %s", e)
 
+    def _weekly_picks_report(self):
+        """每周生成推送建议可信度报告（回测 + 执行闭环审计）。"""
+        try:
+            from modules.picks_evaluator import build_report
+            report = build_report()
+            if report.get("evaluation", {}).get("error"):
+                logger.warning("weekly picks report skipped: %s",
+                               report["evaluation"]["error"])
+            else:
+                n = report["evaluation"].get("total_records", 0)
+                broken = report.get("execution_audit", {}).get("broken", [])
+                logger.info("weekly picks report: %d 条建议, 执行异常 %d 条",
+                            n, len(broken))
+        except Exception as e:
+            logger.exception("weekly picks report failed: %s", e)
+
     def run_forever(self):
         from modules.config import CROSSCHECK, DAILY_PUSH
         scheduler = Scheduler()
@@ -265,6 +281,8 @@ class AlertWorker:
                                      DAILY_PUSH.get("time_ah", "16:30"))
             scheduler.add_daily_task("daily_push_us", lambda: self._push_daily_picks("US"),
                                      DAILY_PUSH.get("time_us", "06:30"))
+        scheduler.add_weekly_task("weekly_picks_report", self._weekly_picks_report,
+                                  "18:30", 4)
         if CROSSCHECK.get("enabled"):
             scheduler.add_daily_task("crosscheck", self._run_crosscheck,
                                      CROSSCHECK.get("time", "16:40"))

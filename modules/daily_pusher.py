@@ -197,6 +197,11 @@ def build_and_send(market="AH", dry_run=False, day=None, skip_trading_check=Fals
             apply_picks_to_paper(result, signal_date=today_s)
         except Exception:
             logger.exception("paper picks auto-exec failed")
+        try:
+            from modules.picks_evaluator import record_picks
+            record_picks(result, signal_date=today_s)
+        except Exception:
+            logger.exception("picks evaluator record failed")
     logger.info("选股推送 %s: %s (%d 只, 通道 %s)", market, ok,
                 len(result.get("picks", [])), channel)
     return ok, msg
