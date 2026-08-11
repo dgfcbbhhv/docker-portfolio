@@ -49,16 +49,41 @@ def _load_json(path, default=None):
 
 
 def record_picks(picks_result, signal_date=None):
-    """把一次推送的所有 picks 追加到建议账本（幂等按 date 去重）。
+    """把一次推送的相关建议追加到建议账本（幂等按 date|code 去重）。
+
+    记录两类：
+    - 推送出去的建议（可建仓/可加仓/减仓/可关注, decision="push"）
+    - 评分达标但被红旗拦截而未推送的候选（decision="blocked"）
+
+    blockeds 取自 picks_result.meta.blocked（daily_picks 生成）。
 
     Returns:
         int: 本次新增记录数。
     """
     _ensure_dirs()
     picks = picks_result.get("picks", []) or []
-    if not picks:
-        return 0
     signal_date = signal_date or picks_result.get("date") or datetime.date.today().isoformat()
+
+    # 被红旗拦截的候选（评分达标未推送）
+    blocked = []
+    meta = picks_result.get("meta") or {}
+    for b in meta.get("blocked") or []:
+        blocked.append({
+            "code": b.get("code"),
+            "name": b.get("name", b.get("code")),
+            "market": b.get("market"),
+            "category": b.get("category", "红旗拦截"),
+            "held": bool(b.get("held", False)),
+            "price": b.get("price"),
+            "kelly_final": b.get("kelly_final"),
+            "decision": "blocked",
+            "lishing": b.get("lishing"),
+            "flags": b.get("flags"),
+        })
+
+    items = [dict(p, decision="push") for p in picks] + blocked
+    if not items:
+        return 0
 
     existing = set()
     if os.path.exists(_RECORDS_PATH):
@@ -76,12 +101,13 @@ def record_picks(picks_result, signal_date=None):
 
     written = 0
     with open(_RECORDS_PATH, "a", encoding="utf-8") as f:
-        for p in picks:
+        for p in items:
             code = p.get("code")
             if not code:
                 continue
+            decision = p.get("decision", "push")
             market = p.get("market") or _market_of(code)
-            pick_id = f"{signal_date}|{market}|{code}"
+            pick_id = f"{signal_date}|{market}|{code}|{decision}"
             if pick_id in existing:
                 continue
             rec = {
@@ -93,9 +119,13 @@ def record_picks(picks_result, signal_date=None):
                 "held": bool(p.get("held", False)),
                 "entry_price": p.get("price"),
                 "kelly_final": p.get("kelly_final"),
+                "decision": decision,
                 "pick_id": pick_id,
                 "recorded_at": datetime.datetime.now().isoformat(),
             }
+            if decision == "blocked":
+                rec["lishing"] = p.get("lishing")
+                rec["flags"] = p.get("flags")
             existing.add(pick_id)
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
             written += 1
@@ -185,15 +215,15 @@ def evaluate_picks(horizons=None, report_date=None):
                 if start_b and end_b:
                     excess = (end_b - start_b) / start_b * 100.0
 
-            key = (horizon, cat)
+            key = (horizon, rec.get("decision", "push"), cat)
             agg[key]["total"] += 1
             agg[key]["rets"].append(ret)
             if excess is not None:
                 agg[key]["excess"].append(excess)
             if ret > 0:
                 agg[key]["wins"] += 1
-            # 假信号：买入/加仓类建议在 horizon 内回撤破 -10%
-            if cat in ("可建仓", "可加仓") and ret < -10.0:
+            # 假信号: 推送的买入/加仓类建议在 horizon 内回撤破 -10%
+            if rec.get("decision", "push") == "push" and cat in ("可建仓", "可加仓") and ret < -10.0:
                 agg[key]["false_neg"] += 1
 
             details.append({
@@ -207,16 +237,20 @@ def evaluate_picks(horizons=None, report_date=None):
 
     summary = {"validated_at": datetime.datetime.now().isoformat(), "horizons": list(horizons)}
     by_horizon = {}
-    for (horizon, cat), data in sorted(agg.items()):
-        by_horizon.setdefault(str(horizon), {})[cat] = {
-            "total": data["total"],
-            "win_rate": round(data["wins"] / data["total"] * 100, 1),
-            "avg_ret_pct": round(sum(data["rets"]) / len(data["rets"]), 2) if data["rets"] else 0,
-            "avg_excess_pct": round(sum(data["excess"]) / len(data["excess"]), 2) if data["excess"] else None,
-            "false_signal_count": data["false_neg"],
-        }
+    for (horizon, decision, cat), data in sorted(agg.items()):
+        cell = {"total": data["total"],
+                "win_rate": round(data["wins"] / data["total"] * 100, 1),
+                "avg_ret_pct": round(sum(data["rets"]) / len(data["rets"]), 2) if data["rets"] else 0,
+                "avg_excess_pct": round(sum(data["excess"]) / len(data["excess"]), 2) if data["excess"] else None,
+                "false_signal_count": data["false_neg"]}
+        by_horizon.setdefault(str(horizon), {}).setdefault(decision, {})[cat] = cell
     summary["by_horizon"] = by_horizon
     summary["total_records"] = len(records)
+    by_decision = defaultdict(lambda: {"push": 0, "blocked": 0})
+    for rec in records:
+        d = rec.get("decision", "push")
+        by_decision[rec.get("category", "") ][d] += 1
+    summary["by_category"] = {k: dict(v) for k, v in by_decision.items()}
     summary["details"] = details[-200:]
 
     _ensure_dirs()

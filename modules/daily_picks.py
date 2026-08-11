@@ -267,6 +267,7 @@ def build_picks(include_announcements=True):
 
     picks = []
     skipped = []
+    blocked_meta = list(meta.get("blocked") or [])  # 保留外部注入, 避免覆盖
     for _, r in df.iterrows():
         code = r["code"]
         market = _market_for_code(code)
@@ -275,6 +276,21 @@ def build_picks(include_announcements=True):
         if cat == "不推送":
             if float(r.get("lishing", 0) or 0) <= 0 or float(r.get("price", 0) or 0) <= 0:
                 skipped.append(code)
+                continue
+            # 评分达标但被红旗/其他条件拦截 → 记录供 6 个月可信度验证
+            flags = str(r.get("lishing_flags", "") or "").strip()
+            if flags and float(r.get("lishing", 0) or 0) >= watch_th:
+                blocked_meta.append({
+                    "code": code,
+                    "name": r.get("name", code),
+                    "market": market,
+                    "held": is_held,
+                    "category": "红旗拦截",
+                    "price": float(r.get("price", 0) or 0),
+                    "kelly_final": float(r.get("kelly_final", 0) or 0),
+                    "lishing": float(r.get("lishing", 0) or 0),
+                    "flags": flags,
+                })
             continue
         lines = _reason_lines(r, is_held, cat, market, add_gap, holdings=holdings)
         ann = None
@@ -293,6 +309,8 @@ def build_picks(include_announcements=True):
             "lines": lines,
             "announcement": ann,
         })
+    meta = dict(meta)
+    meta["blocked"] = blocked_meta
     return {"date": datetime.date.today().isoformat(), "picks": picks,
             "skipped": skipped, "meta": meta}
 

@@ -52,7 +52,8 @@ def test_record_picks_new(iso_env):
     lines = iso_env["rec_path"].read_text(encoding="utf-8").strip().splitlines()
     assert len(lines) == 3
     first = json.loads(lines[0])
-    assert first["pick_id"] == "2026-01-05|A|600036"
+    assert first["pick_id"] == "2026-01-05|A|600036|push"
+    assert first["decision"] == "push"
     assert first["market"] == "A"
     assert first["category"] == "可建仓"
     assert first["entry_price"] == 10.0
@@ -63,6 +64,31 @@ def test_record_picks_idempotent(iso_env):
     # 同日期同代码再记一次应被去重
     assert pe.record_picks(_picks()) == 0
     assert len(iso_env["rec_path"].read_text(encoding="utf-8").strip().splitlines()) == 3
+
+
+def test_record_picks_blocked(iso_env):
+    result = {
+        "date": "2026-01-05",
+        "picks": [{"code": "600900", "name": "长江电力", "market": "A", "category": "可关注",
+                   "held": True, "price": 28.0, "kelly_final": 8.0}],
+        "meta": {
+            "blocked": [
+                {"code": "600941", "name": "中国移动", "market": "A", "held": False,
+                 "category": "红旗拦截", "price": 96.0, "kelly_final": 9.0,
+                 "lishing": 83.5, "flags": "净利同比转负"},
+            ],
+        },
+    }
+    n = pe.record_picks(result)
+    assert n == 2  # 1 推送 + 1 被拦截
+    lines = iso_env["rec_path"].read_text(encoding="utf-8").strip().splitlines()
+    blocked = [json.loads(l) for l in lines]
+    blk = [r for r in blocked if r.get("decision") == "blocked"]
+    assert len(blk) == 1
+    assert blk[0]["pick_id"] == "2026-01-05|A|600941|blocked"
+    assert blk[0]["flags"] == "净利同比转负"
+    assert blk[0]["lishing"] == 83.5
+    assert blk[0]["category"] == "红旗拦截"
 
 
 @pytest.mark.parametrize("market,expected", [
@@ -92,7 +118,7 @@ def test_evaluate_picks_forward_return(iso_env, monkeypatch):
     monkeypatch.setattr(pt, "_fetch_benchmark_df", lambda market: None)
     r = pe.evaluate_picks(horizons=(5,))
 
-    bh = r["by_horizon"]["5"]
+    bh = r["by_horizon"]["5"]["push"]
     assert bh["可建仓"]["total"] == 1
     assert bh["可建仓"]["win_rate"] == 100.0
     # 10 -> 13 = 30%
