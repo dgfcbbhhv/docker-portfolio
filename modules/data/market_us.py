@@ -247,3 +247,46 @@ def _empty_fallback(codes):
     """最终兜底：返回0价格DataFrame，至少显示持股列表"""
     import pandas as pd
     return pd.DataFrame([{"c":c, "name":c, "price":0.0, "chg":0.0, "pe":None, "pb":None} for c in codes])
+
+
+def fetch_us_index_history(symbol=".INX", days=1200):
+    """美股指数收盘序列（标普500）。返回 Series[date->close] 或 None。
+
+    - 主源: akshare index_us_stock_sina (.INX, 覆盖长期历史)
+    - 兜底: 腾讯 K 线 usINX (仅最近几天，优先用于短期 horizon)
+    """
+    import json
+    import urllib.request
+
+    series = None
+    try:
+        import akshare as ak
+        df = ak.index_us_stock_sina(symbol=symbol)
+        if df is not None and not df.empty:
+            df = df.copy()
+            df["date"] = pd.to_datetime(df["date"])
+            series = df.set_index("date")["close"].astype(float).sort_index()
+    except Exception as e:
+        logger.warning("akshare 美股指数历史失败: %s", e)
+    if series is not None and len(series) > 0:
+        return series
+
+    url = ("https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?"
+           "param=usINX,day,,,%s,qfq" % days)
+    try:
+        req = urllib.request.Request(
+            url, headers={"User-Agent": "Mozilla/5.0",
+                          "Referer": "https://gu.qq.com/"})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            raw = r.read().decode("utf-8")
+        data = json.loads(raw)
+        node = data.get("data", {}).get("usINX", {})
+        items = node.get("day") or node.get("qfqday") or []
+        if items:
+            df = pd.DataFrame([
+                {"date": pd.to_datetime(it[0]), "close": float(it[1])} for it in items
+            ])
+            series = df.set_index("date")["close"].astype(float).sort_index()
+    except Exception as e:
+        logger.warning("腾讯美股指数历史失败: %s", e)
+    return series

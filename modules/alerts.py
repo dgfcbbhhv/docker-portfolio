@@ -345,7 +345,34 @@ def check_alerts(portfolio, cur_data, prev_data, lishing_scores, thresholds):
             alerts.append({"code": code, "name": name, "type": "盈利恶化",
                            "msg": f"{name} 最新净利同比 {cur_ey:.1f}%"})
 
-    return alerts
+    return _suppress_batch(alerts, int(thresholds.get("batch_min", 5)))
+
+
+def _suppress_batch(alerts, batch_min):
+    """批量位移抑制：同一轮检查中同一 type 命中 ≥batch_min 只股票时，
+    判定为数据口径/基准漂移（如数据源切换、评分因子变更）而非个股事件，
+    压缩为一条汇总预警，避免轰炸式推送。
+
+    股价跌幅是真风险信号，即使集中在同一轮也可能属实（如大盘系统性下挫），
+    不做批量抑制。
+    """
+    if batch_min < 1:
+        return alerts
+    counts = {}
+    for a in alerts:
+        counts[a["type"]] = counts.get(a["type"], 0) + 1
+    out, emitted = [], set()
+    for a in alerts:
+        t = a["type"]
+        n = counts.get(t, 0)
+        if t == "股价跌幅" or n < batch_min:
+            out.append(a)
+        elif t not in emitted:
+            emitted.add(t)
+            first = a["name"]
+            a["msg"] = f"{first} 等 {n} 只{t}批量位移，疑似数据基准变更，请核对数据源"
+            out.append(a)
+    return out
 
 
 def log_alerts(alerts):

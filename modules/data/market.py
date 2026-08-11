@@ -195,6 +195,32 @@ def _fetch_sina_hk(codes):
 
 
 
+def _fetch_hk_index_history(symbol="hkHSI", days=1200):
+
+    """港股指数收盘序列（腾讯 K 线，默认恒生指数）。
+
+    返回 Series[date->close] 或 None。
+    """
+    import json
+    url = TX_KLINE_URL + f"{symbol},day,,,{days},qfq"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            raw = r.read().decode("utf-8")
+        data = json.loads(raw)
+        items = data.get("data", {}).get(symbol, {}).get("day") or []
+        if not items:
+            return None
+        df = pd.DataFrame([
+            {"date": pd.to_datetime(it[0]), "close": float(it[1])} for it in items
+        ])
+        return df.set_index("date")["close"].astype(float).sort_index()
+    except Exception as e:
+        logger.warning("腾讯港股指数历史失败: %s", e)
+        return None
+
+
+
 # market data utilities
 
 def _fetch_tx_quotes(codes):
@@ -937,7 +963,7 @@ def fetch_vol(code, mkt="A"):
 
         if d is not None and not d.empty:
 
-            cls=d["close"].values if "close" in d.columns else d["鏀剁洏"].values
+            cls=d["close"].values if "close" in d.columns else d["收盘"].values
 
             if len(cls)>10:
 
@@ -1032,7 +1058,7 @@ def fetch_sma(code, period=20, mkt="A"):
 
         if d is not None and not d.empty and len(d)>=period:
 
-            cls=d["close"].values if "close" in d.columns else d["鏀剁洏"].values
+            cls=d["close"].values if "close" in d.columns else d["收盘"].values
 
             sma=float(cls[-period:].mean())
 
@@ -1072,7 +1098,7 @@ def fetch_price_percentile(code, years=5, mkt="A"):
 
         if d is not None and not d.empty and len(d)>20:
 
-            prices=d["close"].values if "close" in d.columns else d["鏀剁洏"].values
+            prices=d["close"].values if "close" in d.columns else d["收盘"].values
 
             cur=prices[-1]
 

@@ -159,3 +159,73 @@ def test_validate_signals_with_benchmark(tmp_path, monkeypatch):
     assert h5["avg_excess_ret_pct"] == pytest.approx(0.0, abs=0.01)
     assert h5["excess_win_rate"] == 0.0
     assert summary["details"][0]["excess_ret_pct"] is not None
+
+
+def test_validate_signals_per_market_benchmark(tmp_path, monkeypatch):
+    """验证按市场取对应基准：A/HK/US 信号各自用独立基准计算超额收益。"""
+    import pandas as pd
+    monkeypatch.setattr(pt, "SNAPSHOT_FILE", str(tmp_path / "snap.json"))
+    monkeypatch.setattr(pt, "VALIDATION_FILE", str(tmp_path / "val.json"))
+
+    dates = [f"2026-07-{1 + i:02d}" for i in range(22)]
+    snapshots = {}
+    for d in dates:
+        base = 10.0 if d == dates[0] else 11.0
+        snapshots[d] = [
+            _snap("600036", price=base),   # A 股
+            _snap("00700", price=base),    # 港股
+            _snap("AAPL", price=base),     # 美股
+        ]
+    pt._save_json(pt.SNAPSHOT_FILE, snapshots)
+
+    # 各市场基准覆盖全部 22 天：A 基准从 100 涨到 200，HK/US 从 100 涨到 110
+    full_idx = pd.to_datetime(dates)
+    bench_map = {
+        "A": pd.Series([100.0 + 100.0 * k / (len(dates) - 1) for k in range(len(dates))], index=full_idx),
+        "HK": pd.Series([100.0 + 10.0 * k / (len(dates) - 1) for k in range(len(dates))], index=full_idx),
+        "US": pd.Series([100.0 + 10.0 * k / (len(dates) - 1) for k in range(len(dates))], index=full_idx),
+    }
+    called = []
+    def fake_bench(market="A"):
+        called.append(market)
+        return bench_map.get(market)
+    monkeypatch.setattr(pt, "_fetch_benchmark_df", fake_bench)
+
+    summary = pt.validate_signals()
+    assert set(called) >= {"A", "HK", "US"}
+    det = {x["code"]: x for x in summary["details"]}
+    # 关键断言：港股/美股信号使用各自市场基准（非 A 股基准），因此超额收益
+    # 与 A 股基准下不同——此处仅验证基准按市场路由，具体数值不敏感。
+    assert det["00700"]["excess_ret_pct"] is not None
+    assert det["AAPL"]["excess_ret_pct"] is not None
+    assert det["600036"]["excess_ret_pct"] is not None
+    # A 股基准 +100%（远超股票 +10%）→ A 股信号平均超额应显著为负
+    assert det["600036"]["excess_ret_pct"] < -5
+
+
+def test_fetch_real_price_multi_source(monkeypatch):
+    """A/HK/US 价格分别走腾讯/新浪/美股多源封装。"""
+    def fake_tx(codes):
+        return {c: {"price": 10.0, "chg": 0.0} for c in codes}
+    monkeypatch.setattr(
+        "modules.data.market._fetch_tx_quotes", fake_tx)
+    assert pt._fetch_real_price("600900", "A") == (10.0, "tx")
+
+    def fake_sina(codes):
+        import pandas as pd
+        return pd.DataFrame([{"c": codes[0], "price": 5.0, "chg": 0.0}])
+    monkeypatch.setattr(
+        "modules.data.market._fetch_sina_hk", fake_sina)
+    assert pt._fetch_real_price("00700", "HK") == (5.0, "sina_hk")
+
+    def fake_us(codes):
+        import pandas as pd
+        return pd.DataFrame([{"c": codes[0], "price": 3.0, "chg": 0.0}])
+    monkeypatch.setattr(
+        "modules.data.market_us.fetch_us_spot", fake_us)
+    assert pt._fetch_real_price("AAPL", "US") == (3.0, "tx_lb_us")
+
+    # 数据源失败时返回 unavailable，不抛异常
+    monkeypatch.setattr(
+        "modules.data.market._fetch_tx_quotes", lambda codes: {})
+    assert pt._fetch_real_price("600900", "A") == (None, "unavailable")

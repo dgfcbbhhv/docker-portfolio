@@ -82,53 +82,70 @@ def _bench_close(series, date_str):
     return float(v)
 
 def _fetch_benchmark_df(market="A"):
-    """A 股基准：优先中证红利 000922，失败退沪深300 000300；当日缓存。"""
+    """市场基准指数收盘序列；当日缓存。
+
+    - A: 优先中证红利 000922，失败退沪深300 000300 (akshare)
+    - HK: 恒生高股息率指数 H11146 / 恒生指数 HSI (新浪)
+    - US: 标普500 ^GSPC (yfinance)
+    """
     today = datetime.date.today().isoformat()
     if _BENCH_CACHE.get("market") == market and _BENCH_CACHE.get("date") == today:
         return _BENCH_CACHE["series"]
     series = None
-    if market == "A":
-        import akshare as ak
-        for symbol in ("sh000922", "sh000300"):
-            try:
-                df = ak.stock_zh_index_daily(symbol=symbol)
-                if df is None or df.empty:
+    try:
+        if market == "A":
+            import akshare as ak
+            for symbol in ("sh000922", "sh000300"):
+                try:
+                    df = ak.stock_zh_index_daily(symbol=symbol)
+                    if df is None or df.empty:
+                        continue
+                    df["date"] = pd.to_datetime(df["date"])
+                    series = df.set_index("date")["close"].astype(float).sort_index()
+                    # 中证红利接口有时返回停更数据（如止于2019），须校验新鲜度
+                    if series.index[-1] < pd.Timestamp(today) - pd.Timedelta(days=10):
+                        series = None
+                        continue
+                    break
+                except Exception:
                     continue
-                df["date"] = pd.to_datetime(df["date"])
-                series = df.set_index("date")["close"].astype(float).sort_index()
-                break
-            except Exception:
-                continue
+        elif market == "HK":
+            from modules.data.market import _fetch_hk_index_history
+            series = _fetch_hk_index_history()
+        elif market == "US":
+            from modules.data.market_us import fetch_us_index_history
+            series = fetch_us_index_history()
+    except Exception:
+        series = None
     _BENCH_CACHE.update({"market": market, "date": today, "series": series})
     return series
 
 
 def _fetch_real_price(code, mkt="A"):
-    """从东方财富 (AKShare) 获取真实行情, 不使用缓存兜底以外的 mock 数据。"""
+    """获取真实行情。
+
+    优先用腾讯(A股)/新浪(港股)轻量接口——东财全量 spot 接口在此网络
+    会被风控断连；美股走 fetch_us_spot 多源(腾讯/长桥)。
+    不使用 mock 数据。
+    """
     from modules.data.cache import retry
     try:
         if mkt == "A":
-            import akshare as ak
-            df = retry(lambda: ak.stock_zh_a_spot_em())
-            if df is not None and not df.empty:
-                col_code = df.columns[0]
-                col_price = df.columns[2]
-                row = df[df[col_code].astype(str) == str(code)]
-                if not row.empty:
-                    price = float(row[col_price].iloc[0])
-                    if price > 0:
-                        return price, "eastmoney"
+            from modules.data.market import _fetch_tx_quotes
+            rows = retry(lambda: _fetch_tx_quotes([str(code)]))
+            if rows:
+                r = rows.get(str(code))
+                if r and r.get("price", 0) > 0:
+                    return float(r["price"]), "tx"
         elif mkt == "HK":
-            import akshare as ak
-            df = retry(lambda: ak.stock_hk_spot_em())
+            from modules.data.market import _fetch_sina_hk
+            df = retry(lambda: _fetch_sina_hk([str(code)]))
             if df is not None and not df.empty:
-                col_code = df.columns[1]
-                col_price = df.columns[3]
-                row = df[df[col_code].astype(str) == str(code)]
+                row = df[df["c"].astype(str) == str(code)]
                 if not row.empty:
-                    price = float(row[col_price].iloc[0])
+                    price = float(row["price"].iloc[0])
                     if price > 0:
-                        return price, "eastmoney_hk"
+                        return price, "sina_hk"
         elif mkt == "US":
             from modules.data.market_us import fetch_us_spot
             spot = fetch_us_spot([code])
@@ -137,7 +154,7 @@ def _fetch_real_price(code, mkt="A"):
                 if not row.empty:
                     price = float(row["price"].iloc[0])
                     if price > 0:
-                        return price, "eastmoney_us"
+                        return price, "tx_lb_us"
     except Exception as _e:
         logger.warning(f"[{__name__}] %s", _e, exc_info=True)
     return None, "unavailable"
@@ -213,6 +230,8 @@ def _compute_us_signal(code, price, vol_info, pctls, us_extra):
     div_yield = round(div_ps / price * 100, 2) if div_ps and price and price > 0 else None
 
     pctls = pctls or {}
+    if isinstance(pctls, (int, float)):
+        pctls = {"pe_pctl": pctls, "pb_pctl": pctls}
     mg = MANUAL_US_GROWTH.get(code, {}) or {}
     pe_pctl = pctls.get("pe_pctl", mg.get("pe_pctl"))
     pb_pctl = pctls.get("pb_pctl", mg.get("pb_pctl"))
@@ -274,6 +293,9 @@ def _compute_us_signal(code, price, vol_info, pctls, us_extra):
 def _compute_signal_for_stock(code, fin_info, price, vol_info, pctls=None, mkt="A", us_extra=None):
     """对单只股票计算买卖信号 (复用现有信号引擎)。"""
     from modules.config import MANUAL_DIV_YIELDS
+
+    if isinstance(pctls, (int, float)):
+        pctls = {"pe_pctl": pctls, "pb_pctl": pctls}
 
     if mkt == "US":
         return _compute_us_signal(code, price, vol_info, pctls or {}, us_extra or {})
@@ -440,6 +462,8 @@ def capture_daily_snapshot():
             pctls = pctls_hk.get(code, {})
         else:
             pctls = pctls_us.get(code, {})
+        if isinstance(pctls, (int, float)):
+            pctls = {"pe_pctl": pctls, "pb_pctl": pctls}
         us_extra = {"spot": spot_us_map.get(code, {}), "div": divs_us.get(code, {})}
         snap = _compute_signal_for_stock(code, fin_info or {}, price, vol, pctls, mkt=mkt, us_extra=us_extra)
         snap["date"] = today
@@ -577,8 +601,13 @@ def validate_signals():
 
     sorted_dates = sorted(snapshots.keys())
 
-    # A 股信号用中证红利/沪深300做相对基准，避免只看绝对涨跌
-    bench = _fetch_benchmark_df("A")
+    # 各市场基准：A 股用中证红利/沪深300，港股用恒指，美股用标普500。
+    # 基准缺失时超额收益置空，不影响绝对涨跌验证。
+    _benches = {}
+    def _bench_for(mkt):
+        if mkt not in _benches:
+            _benches[mkt] = _fetch_benchmark_df(mkt)
+        return _benches[mkt]
 
     for i, date in enumerate(sorted_dates):
         snaps = snapshots[date]
@@ -615,6 +644,7 @@ def validate_signals():
                 ret = (final_price - price) / price * 100
 
                 bench_ret = None
+                bench = _bench_for(mkt)
                 if bench is not None:
                     start_bench = _bench_close(bench, date)
                     end_bench = _bench_close(bench, future_prices[-1][0])
