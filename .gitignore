@@ -19,3 +19,6 @@ backups/
 
 # 备份/临时残留
 *.bak*
+
+# 运行时状态
+modules/data/data_status.json
