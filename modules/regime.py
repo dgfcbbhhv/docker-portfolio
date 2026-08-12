@@ -49,7 +49,10 @@ def fetch_macro_signals():
             result["vix"] = round(float(vix_hist["Close"].iloc[-1]), 1)
             has_data = True
     except Exception as _e:
-        logger.warning(f"[fetch_macro_signals] %s", _e, exc_info=True)
+        if type(_e).__name__ == "YFRateLimitError":
+            logger.warning(f"[fetch_macro_signals] yfinance rate-limited: %s", _e)
+        else:
+            logger.warning(f"[fetch_macro_signals] %s", _e, exc_info=True)
 
     return result if has_data else {"error": "无法获取宏观数据"}
 

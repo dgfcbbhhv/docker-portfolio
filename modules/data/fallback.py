@@ -200,6 +200,12 @@ def fetch_spot_with_fallback(codes, mkt="A"):
                 c = str(row.get("c"))
                 if c in result or c not in want:
                     continue
+                try:
+                    px = float(row.get("price") or 0)
+                except (TypeError, ValueError):
+                    px = 0.0
+                if px <= 0:
+                    continue
                 result[c] = row
                 src_usage[c] = name
             if want is None or len(result) >= len(want):

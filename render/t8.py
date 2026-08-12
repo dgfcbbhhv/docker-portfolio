@@ -35,9 +35,10 @@ def render(tab, df=None, layer_summaries=None):
                 for _, rr in sub.iterrows():
                     code = rr["code"]
                     name = rr["name"]
-                    if "price" not in rr or pd.isna(rr["price"]):
+                    price = rr.get("price")
+                    if price is None or pd.isna(price) or float(price or 0) <= 0:
                         continue
-                    price = float(rr["price"])
+                    price = float(price)
                     stock = cost_data.get(code, {"batches": [], "dividend_per_share": 0.0})
                     overall = calc_overall_tier(code, price)
                     has_data = bool(stock.get("batches")) and stock.get("dividend_per_share", 0) > 0

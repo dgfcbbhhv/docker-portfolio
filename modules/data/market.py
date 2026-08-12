@@ -709,7 +709,11 @@ def fetch_spot_a(codes):
 
         m=df[df["c"].isin(codes)].copy() if "c" in df.columns else df
 
-        if not m.empty: return m
+        if not m.empty:
+            px = pd.to_numeric(m["price"], errors="coerce").fillna(0) if "price" in m.columns else pd.Series(0, index=m.index)
+            if (px > 0).all():
+                return m
+            logger.warning(f"[fetch_spot_a] 缓存含无效价格 {(px<=0).sum()}/{len(m)} 行，重新抓取")
 
     from modules.data.fallback import fetch_spot_with_fallback
     raw_df, src = fetch_spot_with_fallback(codes, mkt="A")
@@ -795,7 +799,13 @@ def fetch_spot_a(codes):
     except Exception as _e:
         logger.warning(f"[{codes}] %s", _e, exc_info=True)
 
-    df=validate_spot(df); save("spot","a_all",df)
+    df=validate_spot(df)
+
+    px = pd.to_numeric(df["price"], errors="coerce").fillna(0)
+    df = df[px > 0]
+    if df.empty:
+        raise ConnectionError("A股行情全部无有效价格，保留旧缓存")
+    save("spot","a_all",df)
 
     return df
 
@@ -809,7 +819,11 @@ def fetch_spot_hk(codes):
 
         m=df[df["c"].isin(codes)].copy()
 
-        if not m.empty: return m
+        if not m.empty:
+            px = pd.to_numeric(m["price"], errors="coerce").fillna(0) if "price" in m.columns else pd.Series(0, index=m.index)
+            if (px > 0).all():
+                return m
+            logger.warning(f"[fetch_spot_hk] 缓存含无效价格 {(px<=0).sum()}/{len(m)} 行，重新抓取")
 
     from modules.data.fallback import fetch_spot_with_fallback
     raw_df, src = fetch_spot_with_fallback(codes, mkt="HK")
@@ -821,6 +835,10 @@ def fetch_spot_hk(codes):
 
     df["pe"]=None; df["pb"]=None; df["mcap"]=None
 
+    px = pd.to_numeric(df["price"], errors="coerce").fillna(0)
+    df = df[px > 0]
+    if df.empty:
+        raise ConnectionError("港股行情全部无有效价格，保留旧缓存")
     save("spot","hk_all",df); return df
 
 
