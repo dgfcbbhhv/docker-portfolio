@@ -356,5 +356,11 @@
     "enabled": true,
     "threshold": 2.0,
     "time": "16:40"
+  },
+  "reit_monitor": {
+    "enabled": true,
+    "time": "18:45",
+    "weekday": 5,
+    "codes": ["508098", "508068"]
   }
 }

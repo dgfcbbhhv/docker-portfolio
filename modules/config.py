@@ -178,6 +178,15 @@ CROSSCHECK = {
     "time": str(_XC.get("time", "16:40")),
 }
 
+# ── REIT 分派率跟踪 ──
+_RM = _CFG.get("reit_monitor", {})
+REIT_MONITOR = {
+    "enabled": bool(_RM.get("enabled", True)),
+    "time": str(_RM.get("time", "18:45")),
+    "weekday": int(_RM.get("weekday", 5)),
+    "codes": list(_RM.get("codes", ["508098", "508068"])),
+}
+
 # ── 模拟盘 ──
 _PT = _CFG.get("paper_trade", {})
 PAPER_TRADE = {
@@ -194,7 +203,7 @@ def _apply_config(cfg):
     global FRAC, MAXPOS, ALERT, MAX_TOTAL, LAYERS
     global ALERT_THRESHOLDS, ALERT_COOLDOWN_MINUTES, ALERT_BATCH_MIN, ALERT_RETRIES, ALERT_CHANNELS
     global SPOT_MAX_AGE_MINUTES, FIN_MAX_AGE_DAYS, DIV_MAX_AGE_DAYS, HIST_MAX_AGE_DAYS
-    global DAILY_PUSH, CROSSCHECK
+    global DAILY_PUSH, CROSSCHECK, REIT_MONITOR
     global PAPER_TRADE
 
     PORT_A = cfg.get("portfolio", {}).get("A", {})
@@ -252,6 +261,14 @@ def _apply_config(cfg):
         "enabled": bool(_xc.get("enabled", False)),
         "threshold": float(_xc.get("threshold", 2.0)),
         "time": str(_xc.get("time", "16:40")),
+    })
+
+    _rm = cfg.get("reit_monitor", {})
+    REIT_MONITOR.update({
+        "enabled": bool(_rm.get("enabled", True)),
+        "time": str(_rm.get("time", "18:45")),
+        "weekday": int(_rm.get("weekday", 5)),
+        "codes": list(_rm.get("codes", ["508098", "508068"])),
     })
 
     _pt = cfg.get("paper_trade", {})

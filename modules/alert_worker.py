@@ -268,6 +268,26 @@ class AlertWorker:
         except Exception as e:
             logger.exception("weekly picks report failed: %s", e)
 
+    def _weekly_reit_report(self):
+        """每周REIT分派率报告: 分派率/溢价率/最近分红, 推送+落盘。"""
+        from modules.config import REIT_MONITOR
+        if not REIT_MONITOR.get("enabled"):
+            return
+        try:
+            from modules.reit_monitor import format_report, reit_report
+            report = reit_report(codes=REIT_MONITOR.get("codes"))
+            title = "[REIT监控] 分派率周报"
+            content = format_report(report)
+            content += "\n时间: %s" % datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+            ok, channel = self.sender.send_multi(
+                title, content, channels=ALERT_CHANNELS, retries=ALERT_RETRIES)
+            if ok:
+                logger.info("reit weekly report sent via %s", channel)
+            else:
+                logger.error("reit weekly report all channels failed")
+        except Exception as e:
+            logger.exception("reit weekly report failed: %s", e)
+
     def _daily_signal_validation(self):
         """每日信号验证: 回溯 signal_snapshots 计算真实胜率, 有样本时推送。
 
@@ -477,7 +497,7 @@ class AlertWorker:
             logger.exception("pipeline health check failed: %s", e)
 
     def run_forever(self):
-        from modules.config import CROSSCHECK, DAILY_PUSH
+        from modules.config import CROSSCHECK, DAILY_PUSH, REIT_MONITOR
         scheduler = Scheduler()
         scheduler.add_task("refresh_and_check", self._refresh_task, 60,
                            run_immediately=True)
@@ -491,6 +511,10 @@ class AlertWorker:
                                      DAILY_PUSH.get("time_us", "06:30"))
         scheduler.add_weekly_task("weekly_picks_report", self._weekly_picks_report,
                                   "18:30", 4)
+        if REIT_MONITOR.get("enabled"):
+            scheduler.add_weekly_task("reit_monitor", self._weekly_reit_report,
+                                      REIT_MONITOR.get("time", "18:45"),
+                                      REIT_MONITOR.get("weekday", 5))
         if CROSSCHECK.get("enabled"):
             scheduler.add_daily_task("crosscheck", self._run_crosscheck,
                                      CROSSCHECK.get("time", "16:40"))
