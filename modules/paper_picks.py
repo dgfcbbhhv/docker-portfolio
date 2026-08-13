@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 from modules.config import PAPER_TRADE
 from modules.paper_common import MAX_POSITION_PCT, MIN_LOT, PORTFOLIO_FILE, _save_json
 from modules.paper_executor import _get_paper_portfolio
+from modules.shadow_ledger import record_shadow
 
 CREATABLE = ("可建仓", "可加仓")
 
@@ -48,7 +49,9 @@ def apply_picks_to_paper(picks_result, signal_date=None):
     for pick in picks:
         code = pick.get("code")
         if pick.get("market") != "A":
-            skipped.append({"code": code, "reason": "非 A 股，模拟盘仅支持 A 股 T+1 成交"})
+            reason = "非 A 股，模拟盘仅支持 A 股 T+1 成交"
+            skipped.append({"code": code, "market": pick.get("market"), "reason": reason})
+            record_shadow(pick, signal_date, reason)
             continue
         price = float(pick.get("price", 0) or 0)
         if price <= 0:
@@ -74,6 +77,7 @@ def apply_picks_to_paper(picks_result, signal_date=None):
             pending.append({
                 "signal_date": signal_date, "code": code, "action": "buy",
                 "shares": shares, "source": "daily_picks",
+                "risk_flags": str(pick.get("risk_flags", "") or "").strip(),
                 "reason": f"{category}（推送建议自动模拟执行，目标仓位 {pct:.1f}%）",
             })
             created.append(code)

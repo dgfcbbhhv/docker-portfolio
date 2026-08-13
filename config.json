@@ -341,7 +341,10 @@
     "add_gap": 2.0,
     "announcement_days": 90,
     "time_ah": "16:30",
-    "time_us": "06:30"
+    "time_us": "06:30",
+    "time_validate": "18:00",
+    "time_health": "18:10",
+    "fmp_limit": 200
   },
   "freshness": {
     "spot_max_age_minutes": 90,

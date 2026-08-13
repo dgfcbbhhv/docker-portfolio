@@ -15,6 +15,47 @@ import os
 import time
 
 import requests
+import datetime
+import json
+import os
+
+_USAGE_FILE = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "data", "fmp_usage.jsonl")
+
+
+def bump_fmp_usage(symbol):
+    """FMP 请求计数(配额监控): 每次真实 HTTP 请求记一行。失败不影响主流程。"""
+    try:
+        os.makedirs(os.path.dirname(_USAGE_FILE), exist_ok=True)
+        with open(_USAGE_FILE, "a", encoding="utf-8") as f:
+            f.write(json.dumps({
+                "ts": datetime.datetime.now().isoformat(),
+                "date": datetime.date.today().isoformat(),
+                "symbol": str(symbol),
+            }) + "\n")
+    except Exception:
+        pass
+
+
+def fmp_usage_today():
+    """今日 FMP 请求数(按 data/fmp_usage.jsonl 统计)。"""
+    today = datetime.date.today().isoformat()
+    n = 0
+    try:
+        with open(_USAGE_FILE, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    if json.loads(line).get("date") == today:
+                        n += 1
+                except Exception:
+                    continue
+    except OSError:
+        pass
+    return n
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +81,7 @@ def _get(path, symbol):
     try:
         r = requests.get(f"{BASE}/{path}", params={"apikey": key, "symbol": symbol, "limit": 1},
                          timeout=_TIMEOUT)
+        bump_fmp_usage(symbol)
         if r.status_code != 200:
             logger.warning("[fmp] %s %s: HTTP %s", path, symbol, r.status_code)
             _CACHE[ck] = (now, None)

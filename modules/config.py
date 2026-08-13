@@ -44,6 +44,7 @@ _DEFAULTS = {
         "announcement_days": 90,
         "time_ah": "16:30",
         "time_us": "06:30",
+        "time_validate": "18:00",
     },
     "paper_trade": {
         "auto_follow_picks": True,
@@ -164,6 +165,9 @@ DAILY_PUSH = {
     "announcement_days": int(_DAILY.get("announcement_days", 90)),
     "time_ah": str(_DAILY.get("time_ah", "16:30")),
     "time_us": str(_DAILY.get("time_us", "06:30")),
+    "time_validate": str(_DAILY.get("time_validate", "18:00")),
+    "time_health": str(_DAILY.get("time_health", "18:10")),
+    "fmp_limit": int(_DAILY.get("fmp_limit", 200)),
 }
 
 # ── 行情多源交叉核对 ──
@@ -238,6 +242,9 @@ def _apply_config(cfg):
         "announcement_days": int(_daily.get("announcement_days", 90)),
         "time_ah": str(_daily.get("time_ah", "16:30")),
         "time_us": str(_daily.get("time_us", "06:30")),
+        "time_validate": str(_daily.get("time_validate", "18:00")),
+        "time_health": str(_daily.get("time_health", "18:10")),
+        "fmp_limit": int(_daily.get("fmp_limit", 200)),
     })
 
     _xc = cfg.get("crosscheck", {})

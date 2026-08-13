@@ -268,6 +268,214 @@ class AlertWorker:
         except Exception as e:
             logger.exception("weekly picks report failed: %s", e)
 
+    def _daily_signal_validation(self):
+        """每日信号验证: 回溯 signal_snapshots 计算真实胜率, 有样本时推送。
+
+        与 validate_signals() 一致。仅在有未来收益样本时推送, 避免无样本轰炸。
+        """
+        try:
+            from modules.paper_trader import validate_signals
+            result = validate_signals()
+        except Exception as e:
+            logger.exception("daily signal validation failed: %s", e)
+            return
+
+        total = result.get("total_signals", 0)
+        if not total:
+            logger.info("daily signal validation: 暂无未来收益样本 (total=%s)", total)
+            return
+
+        buy = result.get("buy_signals", {})
+        sell = result.get("sell_signals", {})
+        hold = result.get("hold_signals", {})
+
+        def _row(sig):
+            n = sig.get("total", 0)
+            win = sig.get("win_rate", 0)
+            avg = sig.get("avg_ret", 0)
+            return n, win, avg
+
+        bn, bw, ba = _row(buy)
+        sn, sw, sa = _row(sell)
+        hn, hw, ha = _row(hold)
+
+        try:
+            with open(os.path.join(DATA_DIR, "paper", "signal_snapshots.json"),
+                      "r", encoding="utf-8") as f:
+                _snaps = json.load(f)
+            _snap_days = [k for k, v in _snaps.items() if isinstance(v, list) and v]
+            snap_line = "快照: %d 天 (最后 %s)" % (len(_snap_days), max(_snap_days))
+        except Exception:
+            snap_line = "快照: 读取失败"
+
+        title = "[信号验证] 每日胜率回测"
+        content = (
+            "真实信号胜率 (基于历史快照):\n"
+            f"买入: {bn} 个, 胜率 {bw}%, 平均 {ba}%\n"
+            f"卖出: {sn} 个, 胜率 {sw}%, 平均 {sa}%\n"
+            f"持有: {hn} 个, 平均 {ha}%\n"
+            f"{snap_line}\n"
+            f"时间: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}"
+        )
+        try:
+            ok, channel = self.sender.send_multi(
+                title, content, channels=ALERT_CHANNELS, retries=ALERT_RETRIES)
+            if ok:
+                logger.info("daily signal validation sent via %s (%d 信号)", channel, total)
+            else:
+                logger.error("daily signal validation all channels failed")
+        except Exception as e:
+            logger.exception("daily signal validation push failed: %s", e)
+
+    HEALTH_STALE_WEEKDAYS = 3
+    VALIDATE_EXPECT_DAYS = 25
+
+    @staticmethod
+    def _weekdays_between(d1, d2):
+        """d2 比 d1 晚多少个工作日(不含周末)。d1/d2 为 datetime。"""
+        if d1 is None or d2 is None:
+            return 999
+        start = d1.date() if hasattr(d1, "date") else d1
+        end = d2.date() if hasattr(d2, "date") else d2
+        n = 0
+        cur = start
+        while cur < end:
+            cur += datetime.timedelta(days=1)
+            if cur.weekday() < 5:
+                n += 1
+        return n
+
+    def _daily_health_check(self):
+        """数据管线健康探针(只读): 快照停更 / 模拟盘停摆 / schedule 被关 / 验证长期无样本。
+        异常时推送 [健康检查]; 每次把状态写入 data/paper/pipeline_health.json 供观测。"""
+        issues = []
+        stats = {"ts": time.time(), "iso": datetime.datetime.now().isoformat()}
+        try:
+            # 1) 模拟盘 schedule 开关
+            sched = {}
+            try:
+                with open(os.path.join(DATA_DIR, "paper", "schedule_config.json"),
+                          "r", encoding="utf-8") as f:
+                    sched = json.load(f)
+            except Exception as e:
+                issues.append("schedule_config.json 读取失败: %s" % e)
+            stats["schedule_enabled"] = bool(sched.get("enabled", False))
+            if not stats["schedule_enabled"]:
+                issues.append("模拟盘 schedule_config.enabled=false (快照链路可能已中断)")
+
+            # 2) 信号快照积累
+            snaps = {}
+            try:
+                with open(os.path.join(DATA_DIR, "paper", "signal_snapshots.json"),
+                          "r", encoding="utf-8") as f:
+                    snaps = json.load(f)
+            except Exception as e:
+                issues.append("signal_snapshots.json 读取失败: %s" % e)
+            snap_days = sorted(k for k, v in snaps.items() if isinstance(v, list) and v)
+            stats["snapshot_days"] = len(snap_days)
+            stats["last_snapshot_date"] = snap_days[-1] if snap_days else None
+            if not snap_days:
+                issues.append("signal_snapshots 为空 (无任何快照)")
+            else:
+                try:
+                    last = datetime.datetime.strptime(snap_days[-1], "%Y-%m-%d")
+                    gap = self._weekdays_between(last, datetime.datetime.now())
+                    stats["snapshot_stale_weekdays"] = gap
+                    if gap >= self.HEALTH_STALE_WEEKDAYS:
+                        issues.append("信号快照已停更 %d 个工作日 (最后 %s)"
+                                      % (gap, snap_days[-1]))
+                except Exception:
+                    pass
+
+            # 3) 模拟盘账本
+            paper = {}
+            try:
+                with open(os.path.join(DATA_DIR, "paper", "paper_portfolio.json"),
+                          "r", encoding="utf-8") as f:
+                    paper = json.load(f)
+            except Exception as e:
+                issues.append("paper_portfolio.json 读取失败: %s" % e)
+            stats["paper_positions"] = len(paper.get("positions", {}))
+            stats["paper_trades"] = len(paper.get("trades", []))
+            lu = paper.get("last_updated")
+            if lu:
+                try:
+                    last = datetime.datetime.fromisoformat(lu)
+                    gap = self._weekdays_between(last, datetime.datetime.now())
+                    stats["paper_stale_weekdays"] = gap
+                    if gap >= self.HEALTH_STALE_WEEKDAYS:
+                        issues.append("模拟盘账本已停更 %d 个工作日 (最后 %s)" % (gap, lu))
+                except Exception:
+                    pass
+
+            # 4) 验证样本积累 (超过预期仍为 0 → 告警)
+            total = 0
+            try:
+                from modules.paper_trader import validate_signals
+                total = int(validate_signals().get("total_signals", 0) or 0)
+            except Exception as e:
+                issues.append("validate_signals 执行失败: %s" % e)
+            stats["validate_total"] = total
+            if snap_days and total == 0 and len(snap_days) >= self.VALIDATE_EXPECT_DAYS:
+                issues.append("已积累 %d 个交易日快照仍无验证样本 (total_signals=0)"
+                              % len(snap_days))
+
+            # 5) FMP 缓存规模 (配额使用参考)
+            try:
+                fmp_dir = os.path.join(DATA_DIR, "fmp_hist")
+                stats["fmp_cached"] = len([f for f in os.listdir(fmp_dir)
+                                           if f.endswith(".parquet")]) if os.path.isdir(fmp_dir) else 0
+            except Exception:
+                stats["fmp_cached"] = 0
+
+            # 6) FMP 配额用量
+            try:
+                from modules.data.fmp import fmp_usage_today
+                stats["fmp_requests_today"] = fmp_usage_today()
+            except Exception:
+                stats["fmp_requests_today"] = 0
+            fmp_limit = int((self.cfg.get("daily_push", {}) or {})
+                            .get("fmp_limit", 200) or 200)
+            if stats["fmp_requests_today"] > fmp_limit:
+                issues.append("FMP 今日请求 %d 次, 超过限额 %d"
+                              % (stats["fmp_requests_today"], fmp_limit))
+
+            stats["issues"] = issues
+            self.state["last_pipeline_health"] = stats
+            try:
+                out = os.path.join(DATA_DIR, "paper", "pipeline_health.json")
+                tmp = out + ".tmp"
+                with open(tmp, "w", encoding="utf-8") as f:
+                    json.dump(stats, f, ensure_ascii=False, indent=2)
+                os.replace(tmp, out)
+            except Exception as e:
+                logger.warning("pipeline health write failed: %s", e)
+
+            if not issues:
+                logger.info("pipeline health ok: %d 快照天, last=%s, validate=%d",
+                            stats.get("snapshot_days", 0),
+                            stats.get("last_snapshot_date"), total)
+                return
+
+            key = "pipeline|health|%s" % "|".join(sorted(issues))
+            now = time.time()
+            sent = self.state.setdefault("sent", {})
+            if sent.get(key) and now - sent[key] < ALERT_COOLDOWN_MINUTES * 60:
+                return
+            title = "[健康检查] 数据管线异常"
+            content = "\n".join("- " + i for i in issues)
+            content += "\n\n快照 %s 天 | 最后快照 %s | 验证样本 %s" % (
+                stats.get("snapshot_days"), stats.get("last_snapshot_date") or "-", total)
+            ok, channel = self.sender.send_multi(title, content, channels=ALERT_CHANNELS,
+                                                 retries=ALERT_RETRIES)
+            if ok:
+                logger.info("pipeline health alert sent via %s", channel)
+            else:
+                logger.error("pipeline health alert all channels failed")
+            sent[key] = now
+        except Exception as e:
+            logger.exception("pipeline health check failed: %s", e)
+
     def run_forever(self):
         from modules.config import CROSSCHECK, DAILY_PUSH
         scheduler = Scheduler()
@@ -286,6 +494,10 @@ class AlertWorker:
         if CROSSCHECK.get("enabled"):
             scheduler.add_daily_task("crosscheck", self._run_crosscheck,
                                      CROSSCHECK.get("time", "16:40"))
+        scheduler.add_daily_task("daily_signal_validation", self._daily_signal_validation,
+                                 DAILY_PUSH.get("time_validate", "18:00"))
+        scheduler.add_daily_task("daily_health_check", self._daily_health_check,
+                                 DAILY_PUSH.get("time_health", "18:10"))
         scheduler.start()
         logger.info("alert worker started")
         try:
