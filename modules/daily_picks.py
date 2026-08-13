@@ -166,12 +166,11 @@ def _classify(row, held, buy_th, watch_th, add_gap, holdings=None):
     growth_path = bool(row.get("growth_factors"))
     price = float(row.get("price", 0) or 0)
 
-    # 数据不足 / 红旗 → 不推送
+    # 数据不足 / 硬红线(一票否决) → 不推送
+    # 硬红线(审计异常/ST/连续两年现金流为负)在 lishing 中 total=0, 由 total<=0 拦截。
+    # 软评分 flag(PB评分/净利低增长等) total>0, 不再阻断建仓, 仅作风险提示(见 _reason_lines)。
     if total <= 0 or price <= 0:
-        return "不推送", ["数据不足，无法评估"]
-    # US 成长股路径的 lishing_flags 是因子得分拆分，非红旗；仅 A/HK 路径才视作红旗
-    if flags and not growth_path:
-        return "不推送", [f"红旗/不达标: {flags}"]
+        return "不推送", ["数据不足或触发硬红线，无法评估"]
 
     kelly = float(row.get("kelly_final", 0) or 0)
     ratio, _is_actual = _effective_ratio(row["code"], row, holdings)
@@ -219,7 +218,11 @@ def _reason_lines(row, held, category, market, add_gap, holdings=None):
     if market == "US":
         lines.append(f"- 成长评分 {_fmt(total, 0)}/100，基于成长因子评估")
     else:
-        lines.append(f"- 李式评分 {_fmt(total, 0)}/100，未触发红旗")
+        flags_line = str(row.get("lishing_flags", "") or "").strip()
+        if flags_line:
+            lines.append(f"- 李式评分 {_fmt(total, 0)}/100，⚠ 不达标项: {flags_line}")
+        else:
+            lines.append(f"- 李式评分 {_fmt(total, 0)}/100，未触发红旗")
     pe = _fmt(row.get("pe"), 1)
     pb = _fmt(row.get("pb"), 1)
     dy = _fmt(row.get("dy"), 1)
@@ -306,6 +309,7 @@ def build_picks(include_announcements=True):
             "market": market,
             "price": float(r.get("price", 0) or 0),
             "kelly_final": float(r.get("kelly_final", 0) or 0),
+            "risk_flags": str(r.get("lishing_flags", "") or "").strip(),
             "lines": lines,
             "announcement": ann,
         })

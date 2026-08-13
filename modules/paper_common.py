@@ -5,7 +5,7 @@ import os
 
 PAPER_DIR = os.path.join(os.path.dirname(__file__), "..", "data", "paper")
 SNAPSHOT_FILE = os.path.join(PAPER_DIR, "signal_snapshots.json")
-PORTFOLIO_FILE = os.path.join(PAPER_DIR, "paper_portfolio.json")
+PORTFOLIO_FILE = os.path.join(PAPER_DIR, "paper_portfolio.json")  # 模拟盘虚拟组合，与真实持仓影子账号(notes/data/paper_portfolio.json)无关
 VALIDATION_FILE = os.path.join(PAPER_DIR, "signal_validation.json")
 NAV_FILE = os.path.join(PAPER_DIR, "paper_nav.json")
 

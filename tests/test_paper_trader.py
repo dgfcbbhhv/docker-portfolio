@@ -229,3 +229,31 @@ def test_fetch_real_price_multi_source(monkeypatch):
     monkeypatch.setattr(
         "modules.data.market._fetch_tx_quotes", lambda codes: {})
     assert pt._fetch_real_price("600900", "A") == (None, "unavailable")
+
+
+def test_target_buy_shares_kelly_zero_floor():
+    """kelly<=0 但 buy_score 达标时，用 KELLY_FLOOR_PCT 兜底建仓。"""
+    pf = _pf()
+    # kelly=0, strong_buy factor=1.0 -> 2% 目标 = 20000, 价格10 一手1000, 够一手 -> 2000股
+    assert pt._target_buy_shares(_snap("600036", price=10.0, kelly=0.0), pf) == 2000
+
+
+def test_target_buy_shares_expensive_lot_insufficient():
+    """高价股目标不够一手时不应买入，避免仓位远超目标。"""
+    pf = _pf()
+    # kelly=7.1% factor=1.0 -> 目标 71000, 但一手 100*1346.5=134650 > 71000 -> 不买
+    assert pt._target_buy_shares(_snap("600519", price=1346.5, kelly=7.1), pf) is None
+    # kelly=0 兜底 2% = 20000 < 一手 134650 -> 不买
+    assert pt._target_buy_shares(_snap("600519", price=1346.5, kelly=0.0), pf) is None
+    # 但一旦目标够一手则应买入：设较高 kelly 使目标 >= 一手
+    # 目标 15% = 150000 >= 134650 -> 整手向下取整 100股
+    assert pt._target_buy_shares(_snap("600519", price=1346.5, kelly=15.0), pf) == 100
+
+
+def test_target_buy_shares_apl_floor_buys_lot():
+    """AAPL/MSFT 场景：kelly=0 用兜底，价格适中时够一手应买入。"""
+    pf = _pf()
+    # 2% 目标 = 20000, AAPL price 308 -> 一手 30800 > 20000 -> 不买(不够一手)
+    assert pt._target_buy_shares(_snap("AAPL", price=308.0, kelly=0.0), pf) is None
+    # 价格 100 -> 一手 10000 < 20000 -> 买入 200股
+    assert pt._target_buy_shares(_snap("AAPL", price=100.0, kelly=0.0), pf) == 200

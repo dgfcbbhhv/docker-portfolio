@@ -19,7 +19,7 @@ import os
 from modules.paths import data_dir, notes_dir
 
 BROKER_PATH = os.path.join(data_dir(), "broker_trades.json")
-PAPER_PATH = os.path.join(data_dir(), "paper_portfolio.json")
+SHADOW_PATH = os.path.join(data_dir(), "paper_portfolio.json")  # 真实持仓镜像(影子账号)，与模拟盘无关
 COST_PATH = os.path.join(notes_dir(), "cost_tiers.json")
 EXEC_PATH = os.path.join(data_dir(), "execution_log.json")
 
@@ -39,10 +39,10 @@ def _load_json(path, key="records"):
 
 def _load_positions():
     """影子账号 positions：{code: {shares, avg_cost}}。"""
-    if not os.path.exists(PAPER_PATH):
+    if not os.path.exists(SHADOW_PATH):
         return {}
     try:
-        with open(PAPER_PATH, "r", encoding="utf-8") as f:
+        with open(SHADOW_PATH, "r", encoding="utf-8") as f:
             pf = json.load(f)
         return (pf or {}).get("positions") or {}
     except (json.JSONDecodeError, OSError):
@@ -167,9 +167,9 @@ def sync_shadow_from_broker():
     if not pos:
         return {"updated": False, "positions": {}, "note": "无真实成交，跳过"}
     shadow = {}
-    if os.path.exists(PAPER_PATH):
+    if os.path.exists(SHADOW_PATH):
         try:
-            with open(PAPER_PATH, "r", encoding="utf-8") as f:
+            with open(SHADOW_PATH, "r", encoding="utf-8") as f:
                 shadow = json.load(f) or {}
         except (json.JSONDecodeError, OSError):
             shadow = {}
@@ -178,11 +178,11 @@ def sync_shadow_from_broker():
                      for c, v in pos.items()}
     changed = new_positions != old
     shadow["positions"] = new_positions
-    os.makedirs(os.path.dirname(PAPER_PATH), exist_ok=True)
-    tmp = PAPER_PATH + ".tmp"
+    os.makedirs(os.path.dirname(SHADOW_PATH), exist_ok=True)
+    tmp = SHADOW_PATH + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(shadow, f, ensure_ascii=False, indent=2)
-    os.replace(tmp, PAPER_PATH)
+    os.replace(tmp, SHADOW_PATH)
     return {"updated": changed, "positions": new_positions,
             "note": "已用真实成交同步影子账号" if changed else "影子账号已与真实成交一致"}
 

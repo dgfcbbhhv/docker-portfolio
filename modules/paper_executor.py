@@ -119,8 +119,18 @@ def _fetch_a_bar_for_date(code, date):
     }
 
 
+KELLY_FLOOR_PCT = 2.0  # Kelly 兜底仓位：buy_score 达标但 kelly<=0 时的建仓占比
+
 def _target_buy_shares(snap, pf):
-    """按 Kelly 建议仓位计算买入股数（100 股整手）。"""
+    """按 Kelly 建议仓位计算买入股数（100 股整手）。
+
+    规则：
+    - buy_score >= SIGNAL_BUY_THRESHOLD 且信号为 strong_buy/buy 才考虑建仓。
+    - kelly>0 用原公式；kelly<=0 用 KELLY_FLOOR_PCT 兜底（buy_score 是主信号，
+      Kelly 只是保守仓位调节器，归零不构成不买的理由，但也不因此重仓）。
+    - 高价股：只有当目标金额够一手时才买入（整手向下取整），
+      目标不够一手则不买，避免用"现金够就买"导致单一仓位远超目标。
+    """
     code = snap.get("code")
     price = snap.get("price")
     if not code or not price or price <= 0:
@@ -131,11 +141,19 @@ def _target_buy_shares(snap, pf):
     if buy_score < SIGNAL_BUY_THRESHOLD or buy_signal not in ("strong_buy", "buy"):
         return None
     factor = 1.0 if buy_signal == "strong_buy" else 0.7
-    target_value = pf["capital"] * min(kelly_pct / 100.0 * factor, MAX_POSITION_PCT / 100.0)
+    if kelly_pct > 0:
+        target_pct = min(kelly_pct / 100.0 * factor, MAX_POSITION_PCT / 100.0)
+    else:
+        target_pct = KELLY_FLOOR_PCT / 100.0
+    target_value = pf["capital"] * target_pct
     pos = pf["positions"].get(code, {})
     current_value = pos.get("shares", 0) * price
     delta = target_value - current_value
     if delta <= 0:
+        return None
+    lot_value = MIN_LOT * price
+    if delta < lot_value:
+        # 目标金额不够一手：不买，避免仓位远超目标
         return None
     shares = int(delta / price / MIN_LOT) * MIN_LOT
     return shares if shares >= MIN_LOT else None

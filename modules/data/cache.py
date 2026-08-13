@@ -44,6 +44,7 @@ TTL = {
     "pctl": 86400 * 7,
     "listing": 86400 * 30,
     "earn": 86400 * 7,
+    "fmp_hist": 86400 * 30,
 }
 
 AK_SEM = Semaphore(3)
