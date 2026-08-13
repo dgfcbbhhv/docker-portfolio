@@ -1126,7 +1126,8 @@ def fetch_price_percentile(code, years=5, mkt="A"):
 
     except Exception as _e:
         logger.warning(f"[{code}] %s", _e, exc_info=True)
-    return 50.0
+    # 失败返回 None: 让调用方区分"无数据"与真实分位, 美股可回退手工成长因子表
+    return None
 
 
 

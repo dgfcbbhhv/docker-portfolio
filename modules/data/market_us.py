@@ -31,7 +31,8 @@ def _get_yf():
 
 def _tx_us_quote(code):
     """腾讯美股实时报价 → 字段列表 或 None
-    field[0]=状态, [1]=名称, [3]=最新价, [4]=昨收, [39]=PE, [52]=股息率%, [66]=每股年分红
+    field[0]=状态, [1]=名称, [3]=最新价, [4]=昨收, [39]=PE, [47]=PB(市净率),
+    [52]=股息率%, [66]=每股年分红
     """
     import re
 
@@ -57,35 +58,41 @@ def _tx_us_kline(code, start=None, end=None):
     """
 
     import requests
-    try:
-        if start is None or end is None:
-            return None
-        url = ("https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?"
-               "param=us%s,day,%s,%s,750,qfq" % (code, start, end))
-        r = requests.get(url, timeout=15,
-                         headers={"User-Agent": "Mozilla/5.0",
-                                  "Referer": "https://gu.qq.com/"})
-        d = r.json()
-        node = d.get("data", {}).get("us%s" % code, {})
-        rows = node.get("day") or node.get("qfqday") or []
-        if not rows:
-            return None
-        res = []
-        for row in rows:
-            # [日期, 开, 收, 高, 低, 量]
-            if len(row) < 6:
-                continue
-            res.append({"date": row[0], "open": float(row[1]),
-                        "close": float(row[2]), "high": float(row[3]),
-                        "low": float(row[4]), "volume": float(row[5])})
-        if not res:
-            return None
-        df = pd.DataFrame(res)
-        df = df[df["date"].between(start, end)].reset_index(drop=True)
-        return df
-    except Exception as e:
-        logger.warning("腾讯 %s 历史数据失败: %s", code, e)
+    if start is None or end is None:
         return None
+    # 腾讯 K 线需要带交易所后缀的代码 (NASDAQ=.OQ, NYSE=.N), 裸代码会返回残缺数据。
+    # 依次尝试 .OQ → .N → 裸代码, 取范围内行数最多且 >20 的结果。
+    candidates = ["us%s.OQ" % code, "us%s.N" % code, "us%s" % code]
+    best = None
+    for sym in candidates:
+        try:
+            url = ("https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?"
+                   "param=%s,day,,,1500,qfq" % sym)
+            r = requests.get(url, timeout=15,
+                             headers={"User-Agent": "Mozilla/5.0",
+                                      "Referer": "https://gu.qq.com/"})
+            d = r.json()
+            node = d.get("data", {}).get(sym, {})
+            rows = node.get("day") or node.get("qfqday") or []
+            if not rows:
+                continue
+            res = []
+            for row in rows:
+                # [日期, 开, 收, 高, 低, 量]
+                if len(row) < 6:
+                    continue
+                res.append({"date": row[0], "open": float(row[1]),
+                            "close": float(row[2]), "high": float(row[3]),
+                            "low": float(row[4]), "volume": float(row[5])})
+            if not res:
+                continue
+            df = pd.DataFrame(res)
+            df = df[df["date"].between(start, end)].reset_index(drop=True)
+            if len(df) > 20 and (best is None or len(df) > len(best)):
+                best = df
+        except Exception as e:
+            logger.warning("腾讯 %s 历史数据失败 (%s): %s", code, sym, e)
+    return best
 
 
 def fetch_us_hist(code, start=None, end=None, days=750):
@@ -236,7 +243,13 @@ def _fetch_us_spot_tx(codes):
                     pe_val = float(parts[39]) if parts[39] else None
                 except (ValueError, IndexError):
                     pass
-                results.append({"c":code, "name":name, "price":price, "chg":chg, "pe":pe_val, "pb":None})
+                pb_val = None
+                try:
+                    pb_val = float(parts[47]) if len(parts) > 47 and parts[47] else None
+                except (ValueError, IndexError):
+                    pass
+                results.append({"c":code, "name":name, "price":price, "chg":chg,
+                                "pe":pe_val, "pb":pb_val})
             except (ValueError, IndexError):
                 results.append({"c":code, "name":code, "price":0.0, "chg":0.0, "pe":None, "pb":None})
         else:
