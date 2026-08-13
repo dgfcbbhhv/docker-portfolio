@@ -3,7 +3,7 @@
 把 daily_picks 的分类建议（可建仓/可加仓/减仓）自动转成模拟盘挂单，
 让虚拟组合按推送的行动建议执行 T+1 开盘成交，形成 推送→自动模拟执行 的闭环。
 
-仅处理 A 股（paper_executor 的 T+1/涨跌停/手数成交假设面向 A 股）；
+仅处理 A 股与 REIT（paper_executor 的 T+1/涨跌停/手数成交假设面向 A 股/REIT）；
 HK/US 推送建议跳过，避免生成必然「停牌/无行情」的噪音挂单。
 
 开关与参数: config.json paper_trade 段
@@ -48,8 +48,8 @@ def apply_picks_to_paper(picks_result, signal_date=None):
 
     for pick in picks:
         code = pick.get("code")
-        if pick.get("market") != "A":
-            reason = "非 A 股，模拟盘仅支持 A 股 T+1 成交"
+        if pick.get("market") not in ("A", "REIT"):
+            reason = "非 A 股/REIT，模拟盘仅支持 A 股与 REIT T+1 成交"
             skipped.append({"code": code, "market": pick.get("market"), "reason": reason})
             record_shadow(pick, signal_date, reason)
             continue

@@ -87,6 +87,68 @@ def _trailing_12m_per_unit(rows, today=None):
     return total
 
 
+def reit_signal(code, price=None):
+    """REIT 完整信号组件: 现价/分派率/估值分位/均线/PE/Kelly/综合评分。
+
+    REITs 无 ROE/EPS 等传统基本面, 综合评分 = 分派率(40) + 估值分位(30) + 趋势(30)。
+    返回 dict 或 None (数据不足)。
+    """
+    try:
+        from modules.data.market import fetch_price_percentile, fetch_sma
+        from modules.kelly import run as kelly_run
+        price = price or fetch_price(code)
+        if not price or price <= 0:
+            return None
+        rows = fetch_dividend_rows(code)
+        per_unit = _trailing_12m_per_unit(rows)
+        dy = round(per_unit / price * 100, 2) if per_unit else None
+        pctl = fetch_price_percentile(code, 5, "A")
+        if pctl is None:
+            pctl = 50.0
+        ma20 = fetch_sma(code, 20, mkt="A")
+        ma60 = fetch_sma(code, 60, mkt="A")
+        p_ma20 = bool(ma20 and price > ma20)
+        ma20_ma60 = bool(ma20 and ma60 and ma20 > ma60)
+        p_ma60 = bool(ma60 and price > ma60)
+        pe = round(100.0 / dy, 2) if dy else None
+        kelly = kelly_run(price=price, pb=None, pe=pe, roe=None, eps=None,
+                          debt=None, div=per_unit or 0.0, vol=0.2)
+        kf = kelly["kelly_vol_adj"]
+        psig = kelly["p_signal"]
+        dy_s = (40 if dy >= 5 else 32 if dy >= 4 else 24 if dy >= 3
+                else 12 if dy >= 2 else 0) if dy else 0
+        val_s = 30 if pctl <= 30 else 20 if pctl <= 50 else 10 if pctl <= 70 else 0
+        trend_s = (10 if p_ma20 else 0) + (10 if ma20_ma60 else 0) + (10 if p_ma60 else 0)
+        ls_score = min(100.0, dy_s + val_s + trend_s)
+        flags = []
+        if (dy or 0) < 3:
+            flags.append("分派率偏低")
+        if pctl > 70:
+            flags.append("估值分位偏高")
+        return {
+            "code": code,
+            "price": price,
+            "div_yield": dy,
+            "pe": pe,
+            "pb": None,
+            "pe_pctl": pctl,
+            "pb_pctl": pctl,
+            "lishing_score": round(ls_score, 1),
+            "lishing_flags": flags,
+            "lishing_status": "warning" if flags else "normal",
+            "price_above_ma20": p_ma20,
+            "ma20_above_ma60": ma20_ma60,
+            "kelly_final": kf,
+            "p_signal": psig,
+            "vol_adj_factor": kelly["vol_adj_factor"],
+            "audit": True,
+            "data_source": "tx+fundf10",
+        }
+    except Exception as e:
+        logger.warning("[REIT] %s 信号计算失败: %s", code, e)
+        return None
+
+
 def summary(code):
     """单只 REIT 的分派率/溢价率汇总。"""
     name = (WATCH_LIST.get(code, {}) or {}).get("name", code)

@@ -246,6 +246,46 @@ def _reason_lines(row, held, category, market, add_gap, holdings=None):
     return lines
 
 
+def _classify_reit(code, held):
+    """REIT 独立分类: 分派率+估值分位+趋势综合分 (REIT 无 ROE/EPS, 不适用 L氏)。
+
+    综合分 = 分派率(40) + 估值分位(30) + 均线趋势(30)。返回 (category, signal_dict|None)。
+    """
+    from modules.reit_monitor import reit_signal
+    s = reit_signal(code)
+    if s is None:
+        return "不推送", None
+    score = s["lishing_score"]
+    dy = s["div_yield"] or 0
+    if not held:
+        if score >= 70 and dy >= 3:
+            return "可建仓", s
+        if score >= 55:
+            return "可关注", s
+        return "不推送", s
+    if score < 40:
+        return "减仓", s
+    return "可关注", s
+
+
+def _reit_reason_lines(cat, s):
+    """REIT 分类理由文案。"""
+    score = s["lishing_score"]
+    dy = s["div_yield"] or 0
+    pctl = s["pe_pctl"]
+    base = (f"综合分 {score:.0f}（分派率 {dy:.2f}% + 估值分位 {pctl:.0f} + 均线趋势）")
+    if cat == "可建仓":
+        lines = [f"未持有，{base}，符合建仓条件"]
+    elif cat == "减仓":
+        lines = [f"建议逢高减仓：{base} 恶化"]
+    else:
+        lines = [f"{base}，持有观察"]
+    flags = "、".join(s.get("lishing_flags") or [])
+    if flags:
+        lines.append(f"⚠ 不达标项: {flags}")
+    return lines
+
+
 def build_picks(include_announcements=True):
     """生成每日选股结果。
 
@@ -271,6 +311,28 @@ def build_picks(include_announcements=True):
     picks = []
     skipped = []
     blocked_meta = list(meta.get("blocked") or [])  # 保留外部注入, 避免覆盖
+
+    # REIT 独立处理: 不依赖 build_portfolio_df 的 REIT 行 (其分红源东财接口不稳定),
+    # 评分走 reit_signal (天天基金分红 + 腾讯行情 + 历史分位/均线)。
+    for code in [c for c in PORT_REIT if c in WATCH_LIST]:
+        is_held = code in held
+        rcat, rs = _classify_reit(code, is_held)
+        if rcat == "不推送":
+            skipped.append(code)
+            continue
+        picks.append({
+            "code": code,
+            "name": (WATCH_LIST.get(code, {}) or {}).get("name", code),
+            "category": rcat,
+            "held": is_held,
+            "market": "REIT",
+            "price": rs["price"],
+            "kelly_final": rs["kelly_final"],
+            "risk_flags": "、".join(rs.get("lishing_flags") or []),
+            "lines": _reit_reason_lines(rcat, rs),
+            "announcement": None,
+        })
+
     for _, r in df.iterrows():
         code = r["code"]
         market = _market_for_code(code)

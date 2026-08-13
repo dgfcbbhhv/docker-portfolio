@@ -32,6 +32,7 @@ from modules.config import (
     MANUAL_US_GROWTH,
     PORT_A,
     PORT_HK,
+    PORT_REIT,
     PORT_US,
     WATCH_LIST,
 )
@@ -146,6 +147,11 @@ def _fetch_real_price(code, mkt="A"):
                     price = float(row["price"].iloc[0])
                     if price > 0:
                         return price, "sina_hk"
+        elif mkt == "REIT":
+            from modules.reit_monitor import fetch_price as _reit_price
+            p = retry(lambda: _reit_price(str(code)))
+            if p and p > 0:
+                return float(p), "tx"
         elif mkt == "US":
             from modules.data.market_us import fetch_us_spot
             spot = fetch_us_spot([code])
@@ -306,6 +312,9 @@ def _compute_signal_for_stock(code, fin_info, price, vol_info, pctls=None, mkt="
     """对单只股票计算买卖信号 (复用现有信号引擎)。"""
     from modules.config import MANUAL_DIV_YIELDS
 
+    if mkt == "REIT":
+        return _compute_reit_signal(code, price)
+
     if isinstance(pctls, (int, float)):
         pctls = {"pe_pctl": pctls, "pb_pctl": pctls}
 
@@ -413,7 +422,60 @@ def _compute_signal_for_stock(code, fin_info, price, vol_info, pctls=None, mkt="
     }
 
 
+def _compute_reit_signal(code, price):
+    """REIT 专用信号: 分派率+估值分位+均线趋势, 复用 evaluate_buy/sell 输出形态。"""
+    from modules.reit_monitor import reit_signal
+    s = reit_signal(code, price=price)
+    if s is None:
+        return {"code": code, "price": price, "error": "REIT 数据不足",
+                "data_source": "tx+fundf10", "is_mock": False}
+    buy_eval = evaluate_buy(
+        lishing_score=s["lishing_score"],
+        pe_pctl=s["pe_pctl"], pb_pctl=s["pb_pctl"],
+        div_yield=s["div_yield"],
+        price_above_ma20=s["price_above_ma20"],
+        ma20_above_ma60=s["ma20_above_ma60"],
+        kelly_final=s["kelly_final"], p_signal=s["p_signal"],
+        vol_adj_factor=s["vol_adj_factor"],
+    )
+    sell_eval = evaluate_sell(
+        current_score=s["lishing_score"], buy_score=None, high_250d=None,
+        div_yield=s["div_yield"], kelly_final=s["kelly_final"],
+        p_signal=s["p_signal"],
+        price_above_ma20=s["price_above_ma20"],
+        ma20_above_ma60=s["ma20_above_ma60"],
+    )
+    return {
+        "code": code,
+        "price": s["price"],
+        "buy_signal": buy_eval["signal"],
+        "buy_score": buy_eval["score"],
+        "buy_label": buy_eval["label"],
+        "sell_signal": sell_eval["signal"],
+        "sell_score": sell_eval["score"],
+        "sell_label": sell_eval["label"],
+        "kelly_final": s["kelly_final"],
+        "p_signal": s["p_signal"],
+        "div_yield": s["div_yield"],
+        "pe": s["pe"],
+        "pb": s["pb"],
+        "roe": None,
+        "lishing_score": s["lishing_score"],
+        "pe_pctl": s["pe_pctl"],
+        "pb_pctl": s["pb_pctl"],
+        "lishing_flags": s["lishing_flags"],
+        "lishing_status": s["lishing_status"],
+        "audit": s["audit"],
+        "debt": None,
+        "ocf_ratio": None,
+        "div_years": None,
+        "data_source": s["data_source"],
+        "is_mock": False,
+    }
+
+
 def capture_daily_snapshot():
+    """每日信号快照: 对所有持仓计算买入/卖出信号评分。"""
     """
     每日信号快照: 对所有持仓计算买入/卖出信号评分。
     使用东方财富真实数据, 不使用 mock 数据。
@@ -433,6 +495,7 @@ def capture_daily_snapshot():
     ca = list(PORT_A.keys())
     chk = list(PORT_HK.keys())
     cus = list(PORT_US.keys())
+    cre = list(PORT_REIT.keys())
 
     fins_a = fetch_fins(ca) if ca else {}
     fins_hk = fetch_fins_hk(chk) if chk else {}
@@ -455,6 +518,8 @@ def capture_daily_snapshot():
         all_codes_with_mkt.append((c, "HK", fins_hk.get(c, {}), vols_hk.get(c, 0.2)))
     for c in cus:
         all_codes_with_mkt.append((c, "US", fins_us.get(c, {}), vols_us.get(c, 0.2)))
+    for c in cre:
+        all_codes_with_mkt.append((c, "REIT", {}, 0.2))
 
     codes_a = [c for c, m, _, _ in all_codes_with_mkt if m == "A"]
     codes_hk = [c for c, m, _, _ in all_codes_with_mkt if m == "HK"]
@@ -474,6 +539,13 @@ def capture_daily_snapshot():
                 "error": f"无法获取真实行情 (数据源: {src})",
                 "is_mock": False,
             })
+            continue
+
+        if mkt == "REIT":
+            snap = _compute_reit_signal(code, price)
+            snap["date"] = today
+            snap["is_mock"] = False
+            results.append(snap)
             continue
 
         if mkt == "A":
