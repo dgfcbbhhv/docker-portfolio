@@ -360,7 +360,7 @@
   "reit_monitor": {
     "enabled": true,
     "time": "18:45",
-    "weekday": 5,
+    "weekday": 4,
     "codes": ["508098", "508068"]
   }
 }

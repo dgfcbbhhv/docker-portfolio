@@ -183,7 +183,7 @@ _RM = _CFG.get("reit_monitor", {})
 REIT_MONITOR = {
     "enabled": bool(_RM.get("enabled", True)),
     "time": str(_RM.get("time", "18:45")),
-    "weekday": int(_RM.get("weekday", 5)),
+    "weekday": int(_RM.get("weekday", 4)),
     "codes": list(_RM.get("codes", ["508098", "508068"])),
 }
 
@@ -267,7 +267,7 @@ def _apply_config(cfg):
     REIT_MONITOR.update({
         "enabled": bool(_rm.get("enabled", True)),
         "time": str(_rm.get("time", "18:45")),
-        "weekday": int(_rm.get("weekday", 5)),
+        "weekday": int(_rm.get("weekday", 4)),
         "codes": list(_rm.get("codes", ["508098", "508068"])),
     })
 
