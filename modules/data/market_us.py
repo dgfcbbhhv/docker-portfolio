@@ -96,12 +96,26 @@ def _tx_us_kline(code, start=None, end=None):
 
 
 def fetch_us_hist(code, start=None, end=None, days=750):
+    """美股历史K线 (带日级缓存, key 含日期范围, 避免不同范围互相污染)。"""
+    from modules.data.cache import load as _c_load, save as _c_save
     if start is None:
-        end_d = datetime.date.today()
-        start_d = end_d - datetime.timedelta(days=days)
-        start = start_d.strftime("%Y-%m-%d")
+        start = (datetime.date.today() - datetime.timedelta(days=days)).strftime("%Y-%m-%d")
     if end is None:
         end = datetime.date.today().strftime("%Y-%m-%d")
+    ck = "%s|%s|%s" % (code, start, end)
+    cached = _c_load("hist_us", ck)
+    if cached is not None:
+        return cached
+    df = _fetch_us_hist_fresh(code, start, end, days)
+    if df is not None and not df.empty:
+        try:
+            _c_save("hist_us", ck, df)
+        except Exception as e:
+            logger.warning("hist_us 缓存写入失败 %s: %s", code, e)
+    return df
+
+
+def _fetch_us_hist_fresh(code, start, end, days=750):
     # 腾讯 K 线优先：内网/国内网络最快最稳
     df_tx = _tx_us_kline(code, start, end)
     if df_tx is not None and not df_tx.empty:
@@ -140,6 +154,37 @@ def fetch_us_hist(code, start=None, end=None, days=750):
     except Exception as e:
         logger.warning("yfinance %s 历史数据失败: %s", code, e)
     return None
+
+
+def fetch_us_ma_states(code, days=400):
+    """从美股历史K线计算均线状态, 供成长评分使用。
+
+    Returns: {"price_above_ma20", "ma20_above_ma60", "price_above_ma60",
+              "ma60_above_ma120"} 或 {} (数据不足)。
+    """
+    try:
+        df = fetch_us_hist(code, days=days)
+        if df is None or df.empty:
+            return {}
+        close = pd.to_numeric(df["close"], errors="coerce").dropna()
+        if len(close) < 130:
+            return {}
+        cur = float(close.iloc[-1])
+        ma20 = float(close.rolling(20).mean().iloc[-1])
+        ma60 = float(close.rolling(60).mean().iloc[-1])
+        ma120 = float(close.rolling(120).mean().iloc[-1])
+        if not (cur > 0 and ma20 > 0 and ma60 > 0 and ma120 > 0):
+            return {}
+        return {
+            "price_above_ma20": cur > ma20,
+            "ma20_above_ma60": ma20 > ma60,
+            "price_above_ma60": cur > ma60,
+            "ma60_above_ma120": ma60 > ma120,
+        }
+    except Exception as e:
+        logger.warning("美股均线状态计算失败 %s: %s", code, e)
+        return {}
+
 
 def fetch_us_spot(codes):
     # 腾讯实时接口优先：内网/国内网络最快最稳，且已验证可用

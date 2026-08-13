@@ -233,6 +233,15 @@ def _compute_us_signal(code, price, vol_info, pctls, us_extra):
     if isinstance(pctls, (int, float)):
         pctls = {"pe_pctl": pctls, "pb_pctl": pctls}
     mg = MANUAL_US_GROWTH.get(code, {}) or {}
+    # 均线因子自动补齐: 手工表缺失时从历史K线计算, 不覆盖手工设置的值
+    if not (mg.get("price_above_ma20") is not None and mg.get("ma20_above_ma60") is not None
+            and mg.get("price_above_ma60") is not None and mg.get("ma60_above_ma120") is not None):
+        try:
+            from modules.data.market_us import fetch_us_ma_states
+            for _k, _v in (fetch_us_ma_states(code) or {}).items():
+                mg.setdefault(_k, _v)
+        except Exception:
+            pass
     pe_pctl = pctls.get("pe_pctl", mg.get("pe_pctl"))
     pb_pctl = pctls.get("pb_pctl", mg.get("pb_pctl"))
     price_above_ma20 = mg.get("price_above_ma20")
