@@ -35,6 +35,12 @@ if [ "$MODE" = "alert-worker" ]; then
     exec setpriv --reuid=app --regid=app --init-groups python -m modules.alert_worker
 fi
 
+# MODE=monitor：仅启动独立健康监控进程（第三容器）
+if [ "$MODE" = "monitor" ]; then
+    echo "[entrypoint] monitor mode"
+    exec setpriv --reuid=app --regid=app --init-groups python -m modules.monitor
+fi
+
 # MODE=portfolio：仅启动 Streamlit 前端，不内嵌 alert_worker。
 # 保证整个系统只有一个长桥客户端进程（专职 alert-worker 容器），
 # 避免双容器并发调用同一 access token 被长桥端 401004 互踢。

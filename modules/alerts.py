@@ -1,7 +1,4 @@
 """多通道预警系统
-import logging
-
-logger = logging.getLogger(__name__)
 通道: 邮件 / 企业微信 / Telegram / Bark / 通用 Webhook
 触发: 股价跌幅 / 股息率变动 / Kelly变化 / 李氏评分下降 / 论点破坏者
 
@@ -92,7 +89,7 @@ class AlertSender:
                     latency_ms = round((time.monotonic() - start) * 1000)
                     self._log_audit(title, content, channel, "sent", i, None, latency_ms, meta)
                     return True
-                last_err = "channel returned False"
+                last_err = getattr(self, "_last_error", "channel returned False")
             except Exception as e:
                 last_err = f"{type(e).__name__}: {e}"
             if i < attempts - 1:
@@ -104,9 +101,12 @@ class AlertSender:
 
     def send_multi(self, title, content, channels=None, retries=3, meta=None):
         """按顺序尝试多个通道，任一成功即返回 (True, channel)。"""
+        reasons = {}
         for ch in (channels or ["email", "wechat", "telegram", "webhook"]):
             if self.send(title, content, channel=ch, retries=retries, meta=meta):
                 return True, ch
+            reasons[ch] = getattr(self, "_last_error", "channel returned False")
+        logger.error("all alert channels failed: %s", reasons)
         return False, None
 
     def _log_audit(self, title, content, channel, status, retries, err, latency_ms, meta=None):
@@ -245,7 +245,9 @@ class AlertSender:
                 except Exception as _e:
                     logger.warning(f"[{__name__}] %s", _e, exc_info=True)
                 return True
-        except Exception:
+        except Exception as _e:
+            self._last_error = f"{type(_e).__name__}: {_e}"
+            logger.warning("[%s] bark push failed: %s: %s", __name__, type(_e).__name__, _e, exc_info=True)
             return False
 
     def _bark_encrypted(self, t, c, parsed, path, key):
@@ -273,7 +275,9 @@ class AlertSender:
                 ["openssl", "enc", "-aes-128-cbc", "-K", key.encode().hex(),
                  "-iv", iv_str.encode().hex(), "-nosalt"],
                 input=payload.encode("utf-8"), capture_output=True, check=True)
-        except Exception:
+        except Exception as _e:
+            logger.warning("[%s] bark openssl encrypt failed: %s: %s", __name__, type(_e).__name__, _e, exc_info=True)
+            self._last_error = f"{type(_e).__name__}: {_e}"
             return False
         ciphertext = base64.b64encode(p.stdout).decode("ascii")
         url = f"{parsed.scheme}://{parsed.netloc}{path}"
@@ -292,7 +296,9 @@ class AlertSender:
                 except Exception as _e:
                     logger.warning(f"[{__name__}] %s", _e, exc_info=True)
                 return True
-        except Exception:
+        except Exception as _e:
+            self._last_error = f"{type(_e).__name__}: {_e}"
+            logger.warning("[%s] bark encrypted push failed: %s: %s", __name__, type(_e).__name__, _e, exc_info=True)
             return False
 
 
