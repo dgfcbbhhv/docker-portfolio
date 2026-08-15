@@ -8,6 +8,8 @@
   4. NAS 磁盘空间：数据卷剩余空间 + data 目录体积（阈值可配）
   5. 定时任务执行验证：每日 A/H、US 选股推送与 REIT 周报是否按时落地
      （读取 daily_push_state.json / reit_monitor.json，非交易日自动跳过）
+  6. 静默功能探针：模拟盘每日验证状态（schedule_config.json 的
+     last_run/last_run_status）+ 成交对账/影子账户文件完整性
 
 告警规则：
 - 正常->故障、故障->恢复两个时刻发通知；连续 CONFIRM_FAILURES 次失败才确认故障
@@ -42,6 +44,9 @@ WORKER_HEARTBEAT_PATH = os.path.join(DATA_DIR, "worker_heartbeat.json")
 PUSH_STATE_PATH = os.path.join(DATA_DIR, "daily_push_state.json")
 CAL_PATH = os.path.join(DATA_DIR, "trading_calendar.json")
 REIT_REPORT_PATH = os.path.join(DATA_DIR, "reports", "reit_monitor.json")
+PAPER_SCHEDULE_PATH = os.path.join(DATA_DIR, "paper", "schedule_config.json")
+EXECUTION_PATH = os.path.join(DATA_DIR, "execution_log.json")
+TRADE_PATH = os.path.join(_ROOT, "notes", "trades.json")
 WEB_HEALTH_URL = "http://127.0.0.1:8501/_stcore/health"
 
 INTERVAL_SEC = int(os.environ.get("MONITOR_INTERVAL_MIN", "5")) * 60
@@ -74,6 +79,7 @@ _LABELS = {
     "data_freshness": "数据新鲜度",
     "disk": "NAS 磁盘空间",
     "scheduled_tasks": "定时任务执行",
+    "silent_features": "静默功能（模拟盘/对账/影子）",
 }
 
 logging.basicConfig(level=logging.INFO,
@@ -279,6 +285,64 @@ def check_scheduled_tasks():
     return {"ok": not issues, "detail": detail}
 
 
+def check_silent_features():
+    """静默功能探针：模拟盘每日验证 + 成交对账/影子账户文件完整性。
+
+    模拟盘是唯一有固定日更产出的后台管道（schedule_config.json 记录每日
+    last_run/last_run_status）；成交对账与影子账户为事件驱动，无交易就不更新，
+    因此只在文件存在但解析失败（损坏）时报警，避免无交易日误报。
+    """
+    now = datetime.datetime.now()
+    today = now.strftime("%Y-%m-%d")
+    parts = []
+    issues = []
+
+    cfg = None
+    cfg_missing = False
+    try:
+        with open(PAPER_SCHEDULE_PATH, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+    except FileNotFoundError:
+        cfg_missing = True
+    except Exception as e:
+        issues.append("模拟盘 schedule_config.json 损坏: %s" % e)
+
+    if _is_trading_day_ah(now.date()):
+        run_time = str((cfg or {}).get("run_time", "15:30"))
+        if _hhmm_passed(now, run_time, TASK_GRACE_MIN):
+            if cfg is None:
+                if cfg_missing:
+                    issues.append("模拟盘 schedule_config.json 缺失，每日验证可能从未运行")
+            else:
+                last_run = cfg.get("last_run")
+                status = cfg.get("last_run_status")
+                if last_run == today and status == "success":
+                    parts.append("模拟盘今日已验证成功")
+                elif last_run == today:
+                    issues.append("模拟盘今日运行失败: %s" % (status or "未知"))
+                else:
+                    issues.append("模拟盘今日未运行（期望 %s 后 %d 分钟内完成）"
+                                  % (run_time, TASK_GRACE_MIN))
+        else:
+            parts.append("模拟盘未到检查时间（%s）" % run_time)
+    else:
+        parts.append("模拟盘今日不适用（非交易日）")
+
+    for label, path in (("成交对账", EXECUTION_PATH), ("影子账户", TRADE_PATH)):
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    json.load(f)
+                parts.append("%s 文件正常" % label)
+            except Exception as e:
+                issues.append("%s 文件损坏: %s" % (label, e))
+        else:
+            parts.append("%s 暂无数据（跳过）" % label)
+
+    detail = "；".join(issues + parts) if issues else "；".join(parts)
+    return {"ok": not issues, "detail": detail}
+
+
 def run_cycle(state):
     _write_heartbeat()
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -311,6 +375,7 @@ def run_cycle(state):
 
     results["disk"] = check_disk(state)
     results["scheduled_tasks"] = check_scheduled_tasks()
+    results["silent_features"] = check_silent_features()
 
     state["last_check"] = {"ts": time.time(), "iso": now, "checks": results}
     return results
