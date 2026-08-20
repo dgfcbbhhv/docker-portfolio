@@ -22,24 +22,47 @@ def render(tab, df=None, layer_summaries=None):
                 price = float(r.get("price") or 0)
                 if code and price > 0:
                     tier_by_code[code] = calc_overall_tier(code, price).get("tier", "数据不足")
+
+            # 真实持仓：broker_trades 权威；capital 用真实市值+现金估算，避免误用模拟盘本金
+            actual_holdings = None
             capital = None
             try:
                 from modules.holdings import get_actual_holdings
-                _ah = get_actual_holdings()
-                if _ah and _ah.get("capital"):
-                    capital = float(_ah["capital"])
-                if not capital:
-                    # broker 源无本金概念(capital=0), 回退到模拟盘/虚拟本金
-                    from modules.paper_trader import VIRTUAL_CAPITAL, _get_paper_portfolio
-                    _pf = _get_paper_portfolio() or {}
-                    capital = float(_pf.get("capital") or VIRTUAL_CAPITAL or 0) or None
+                actual_holdings = get_actual_holdings()
+                pos = (actual_holdings or {}).get("positions") or {}
+                if pos:
+                    price_map = {str(r.get("code", "")): float(r.get("price") or 0) for _, r in df.iterrows()}
+                    total_mv = 0.0
+                    for code, p in pos.items():
+                        shares = float((p or {}).get("shares") or 0)
+                        avg = float((p or {}).get("avg_cost") or 0)
+                        px = price_map.get(str(code)) or avg
+                        total_mv += shares * px
+                    capital = total_mv + float((actual_holdings or {}).get("cash") or 0)
             except Exception as _e:
-                logger.warning("t15 capital 读取失败: %s", _e)
-            plan = build_position_plan(df.to_dict("records"), tier_by_code=tier_by_code, capital=capital)
+                logger.warning("t15 真实持仓读取失败: %s", _e)
+
+            plan = build_position_plan(df.to_dict("records"), tier_by_code=tier_by_code,
+                                       capital=capital, actual_holdings=actual_holdings)
             s = plan["summary"]
             st.markdown("### 🧭 仓位管理")
+            src_label = {"actual": "真实持仓市值占比", "target": "目标配置权重"}
+            st.caption(f"口径：{src_label.get(s.get('ratio_source'), s.get('ratio_source'))}｜"
+                       f"总资产 ≈ ¥{capital:,.0f}" if capital else
+                       f"口径：{src_label.get(s.get('ratio_source'), s.get('ratio_source'))}")
             if capital:
                 st.caption(f"总资产 ≈ ¥{capital:,.0f}｜单笔风险预算默认每笔最多亏 1.5%（止损 5%）")
+
+            # 止损提醒：真实持仓回撤监控
+            try:
+                from modules.stop_loss_monitor import stop_loss_from_df
+                sl = stop_loss_from_df(df, holdings=actual_holdings)
+                if sl["triggers"]:
+                    st.error("🔴 止损提醒：" + "；".join(sl["triggers"]))
+                elif actual_holdings and (actual_holdings.get("positions") or {}):
+                    st.info(f"持仓止损监控正常（回撤阈值 {sl['stop_loss_pct']:.0f}%）")
+            except Exception as _e:
+                logger.warning("t15 止损提醒失败: %s", _e)
             c1, c2, c3, c4, c5, c6 = st.columns(6)
             c1.metric("当前总仓位", f"{s['total_current']:.1f}%")
             c2.metric("目标总仓位", f"{s['total_target']:.1f}%")
@@ -73,6 +96,7 @@ def render(tab, df=None, layer_summaries=None):
                         rb_txt += f"（{e['risk_cap_pct']:.1f}%）"
                 entry_rows.append({
                     "代码": e["code"], "名称": e["name"], "当前%": e["current_ratio"],
+                    "口径": src_label.get(e.get("current_source"), e.get("current_source") or "目标配置权重"),
                     "目标%": e["target_ratio"], "可加%": e["gap_ratio"],
                     "评分": e["lishing"], "股息率%": e["dy"], "档位": e["tier"],
                     "结论": verdict_label.get(e["verdict"], e["verdict"]), "金字塔": ladder_txt,

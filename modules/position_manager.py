@@ -27,8 +27,48 @@ def _f(v, default=0.0):
         return default
 
 
+def _resolve_actual_ratios(rows, actual_holdings=None):
+    """真实市值占比。
+
+    有真实持仓时：真实市值占比 = 该股市值 / (总市值 + 现金)。
+    返回 (ratio_map, source)，ratio_map: {code: float(%)}；source: "actual" | "target"。
+    真实持仓为空时返回 ({}, "target")，调用方回退目标权重。
+    """
+    ah = actual_holdings
+    if ah is None:
+        try:
+            from modules.holdings import get_actual_holdings
+            ah = get_actual_holdings()
+        except Exception:
+            ah = {}
+    pos = (ah or {}).get("positions") or {}
+    if not pos:
+        return {}, "target"
+    # 用行内现价估算市值（无现价回退成本）
+    price_map = {}
+    for r in rows:
+        code = str(r.get("code", ""))
+        p = _f(r.get("price", 0))
+        if code and p > 0:
+            price_map[code] = p
+    total_mv = 0.0
+    per_mv = {}
+    for code, p in pos.items():
+        shares = _f((p or {}).get("shares", 0))
+        avg = _f((p or {}).get("avg_cost", 0))
+        px = price_map.get(str(code)) or avg
+        mv = shares * px
+        per_mv[str(code)] = mv
+        total_mv += mv
+    cash = _f((ah or {}).get("cash", 0))
+    denom = total_mv + cash
+    if denom <= 0:
+        return {}, "target"
+    return {code: round(mv / denom * 100.0, 1) for code, mv in per_mv.items()}, "actual"
+
+
 def build_position_plan(rows, tier_by_code=None, freshness_codes=None, rules=None,
-                        capital=None):
+                        capital=None, actual_holdings=None):
     """根据持仓行生成逐只仓位结论与组合层状态。
 
     Args:
@@ -37,6 +77,8 @@ def build_position_plan(rows, tier_by_code=None, freshness_codes=None, rules=Non
         freshness_codes: 数据新鲜度有问题的代码集合。
         rules: 可选覆盖 maxpos / max_total / lishing_buy / add_gap。
         capital: 组合总资产（元）。提供时启用单笔风险预算约束。
+        actual_holdings: 真实持仓 {"positions": {code: {shares, avg_cost}}, "cash": x}。
+            提供时该股 current 用真实市值占比；缺省自动调 holdings.get_actual_holdings()。
     """
     rules = rules or {}
     maxpos = _f(rules.get("maxpos", MAXPOS))
@@ -45,13 +87,19 @@ def build_position_plan(rows, tier_by_code=None, freshness_codes=None, rules=Non
     add_gap = _f(rules.get("add_gap", DAILY_PUSH["add_gap"]))
     tier_by_code = tier_by_code or {}
     freshness_codes = set(freshness_codes or [])
+    actual_ratios, ratio_source = _resolve_actual_ratios(rows, actual_holdings)
 
     entries = []
     for r in rows:
         code = str(r.get("code", ""))
         name = str(r.get("name", code))
         group = str(r.get("group", ""))
-        current = _f(r.get("weight", r.get("ratio", 0)))
+        # 有真实持仓用真实市值占比，否则回退目标权重（规划缺口口径）
+        actual_ratio = actual_ratios.get(code)
+        if ratio_source == "actual" and actual_ratio is not None:
+            current = actual_ratio
+        else:
+            current = _f(r.get("weight", r.get("ratio", 0)))
         target = _f(r.get("kelly_portfolio_adj", 0))
         ls = _f(r.get("lishing", 0))
         dy = _f(r.get("dy", 0))
@@ -72,7 +120,10 @@ def build_position_plan(rows, tier_by_code=None, freshness_codes=None, rules=Non
             reasons.append("成本档位警戒")
         elif current >= maxpos:
             verdict = "持有"
-            reasons.append("已达单票上限")
+            if ratio_source == "actual":
+                reasons.append(f"真实持仓占比 {current:.1f}% 已达单票上限 {maxpos:.0f}%，建议减仓")
+            else:
+                reasons.append("已达单票上限")
         elif target <= 0:
             verdict = "持有"
             reasons.append("Kelly 无加仓空间")
@@ -117,6 +168,7 @@ def build_position_plan(rows, tier_by_code=None, freshness_codes=None, rules=Non
             "group": group,
             "layer": _GROUP_LAYER.get(group, group),
             "current_ratio": round(current, 1),
+            "current_source": ratio_source,
             "target_ratio": round(target, 1),
             "gap_ratio": round(gap, 1),
             "lishing": ls,
@@ -165,6 +217,7 @@ def build_position_plan(rows, tier_by_code=None, freshness_codes=None, rules=Non
         "stopped": sum(1 for e in entries if e["verdict"] == "停止加仓"),
         "over_single_limit": sum(1 for e in entries if e["current_ratio"] >= maxpos),
         "freshness_codes": sorted(freshness_codes),
+        "ratio_source": ratio_source,
     }
     return {"entries": entries, "layers": layers, "summary": summary, "rules": {
         "maxpos": maxpos, "max_total": max_total, "buy_th": buy_th, "add_gap": add_gap}}
