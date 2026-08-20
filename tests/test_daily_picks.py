@@ -67,13 +67,14 @@ def test_classify_insufficient():
     r = FakeRow(total=0, price=0)
     cat, lines = dp._classify(r, False, 70, 60, 2.0)
     assert cat == "不推送"
-    assert lines[0] == "数据不足，无法评估"
+    assert lines[0] == "数据不足或触发硬红线，无法评估"
 
 
 def test_classify_red_flag():
-    r = FakeRow(total=80, flags="ROE评分: 低")
+    """软评分 flag 不再阻断建仓/加仓，仅作为风险提示（d74812e 起）。"""
+    r = FakeRow(total=80, flags="ROE评分: 低", price=38.0)
     cat, _ = dp._classify(r, True, 70, 60, 2.0)
-    assert cat == "不推送"
+    assert cat != "不推送"
 
 
 def test_classify_growth_flags_ignored(monkeypatch):

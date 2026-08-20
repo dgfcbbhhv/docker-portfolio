@@ -9,7 +9,7 @@ _ORIG = {}
 
 @pytest.fixture(autouse=True)
 def _restore_paths():
-    for k in ("BROKER_PATH", "PAPER_PATH", "COST_PATH"):
+    for k in ("BROKER_PATH", "SHADOW_PATH", "COST_PATH"):
         _ORIG.setdefault(k, getattr(ah, k))
     yield
     for k, v in _ORIG.items():
@@ -26,7 +26,7 @@ def _mk_broker(tmp_path, records):
 def _mk_paper(tmp_path, positions):
     p = tmp_path / "paper_portfolio.json"
     p.write_text(json.dumps({"positions": positions}), encoding="utf-8")
-    ah.PAPER_PATH = str(p)
+    ah.SHADOW_PATH = str(p)
 
 
 def test_buy_aggregate_avg_cost(tmp_path):
@@ -109,7 +109,7 @@ def test_sync_shadow_from_broker(tmp_path):
     ])
     p = tmp_path / "paper_portfolio.json"
     p.write_text(json.dumps({"positions": {"600036": {"shares": 100, "avg_cost": 38.0}}}), encoding="utf-8")
-    ah.PAPER_PATH = str(p)
+    ah.SHADOW_PATH = str(p)
     res = ah.sync_shadow_from_broker()
     assert res["updated"] is True
     assert res["positions"]["600036"]["shares"] == 200
