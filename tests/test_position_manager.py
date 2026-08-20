@@ -81,3 +81,27 @@ def test_risk_budget_disabled_without_capital():
     assert e["verdict"] == "可加仓"
     assert e["risk_budget"] is None
     assert e["risk_cap_pct"] is None
+
+
+def test_add_count_from_cost_batches(monkeypatch):
+    """cost_tiers.json 批次数作为已加仓次数, 按真实层级放量。"""
+    import modules.cost_tier as ct
+    monkeypatch.setattr(ct, "get_stock",
+                        lambda code: {"batches": [{"shares": 100}, {"shares": 100}]})
+    rows = [_row(weight=5.0, target=20.0, lishing=82.0)]
+    plan = pm.build_position_plan(rows, tier_by_code={"600036": "黄金"})
+    e = plan["entries"][0]
+    assert e["add_count"] == 2
+    # 已加2次 → 第3层, 放量 = gap*0.2
+    assert e["add_step"] == 3
+
+
+def test_add_count_zero_no_batches(monkeypatch):
+    """无批次时视为首层。"""
+    import modules.cost_tier as ct
+    monkeypatch.setattr(ct, "get_stock", lambda code: {"batches": []})
+    rows = [_row(weight=5.0, target=20.0, lishing=82.0)]
+    plan = pm.build_position_plan(rows, tier_by_code={"600036": "黄金"})
+    e = plan["entries"][0]
+    assert e["add_count"] == 0
+    assert e["add_step"] == 1

@@ -84,9 +84,17 @@ def build_position_plan(rows, tier_by_code=None, freshness_codes=None, rules=Non
 
         gap = max(0.0, target - current) if verdict == "可加仓" else 0.0
 
+        # 加仓台账：cost_tiers.json 的成本批次数 = 已加仓次数（每笔批次即一次加仓）
+        add_count = 0
+        try:
+            from modules.cost_tier import get_stock as _ct_stock
+            add_count = len((_ct_stock(code) or {}).get("batches") or [])
+        except Exception:
+            add_count = 0
+
         ladder = plan_add_ladder(
             current, target, tier=tier, lishing=ls, buy_th=buy_th,
-            maxpos=maxpos, min_gap=add_gap)
+            maxpos=maxpos, min_gap=add_gap, add_count=add_count)
         ladder_verdict = ladder["verdict"]
         if verdict == "可加仓" and ladder_verdict != "可加仓":
             verdict = "持有"
@@ -119,6 +127,7 @@ def build_position_plan(rows, tier_by_code=None, freshness_codes=None, rules=Non
             "reasons": "；".join(reasons),
             "add_step": ladder.get("step"),
             "add_pct": round(ladder_add_pct, 1),
+            "add_count": add_count,
             "ladder_alloc": ladder.get("ladder_alloc", []),
             "ladder_cap_hit": ladder.get("cap_hit", False),
             "risk_budget": risk,

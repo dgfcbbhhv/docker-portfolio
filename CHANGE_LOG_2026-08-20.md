@@ -20,7 +20,7 @@
 ### 2. 正金字塔加仓层级（新增 `modules/add_ladder.py`）
 - `plan_add_ladder()` 纯函数：gap = Kelly目标 − 当前仓位，按递减权重 `[0.5,0.3,0.2]` 拆 max_steps 层。
 - 硬门禁：档位警戒 / 评分≤0或<买入线 / 已达单票上限 / gap<min_gap → 整层持有。
-- 逐层累计不得突破 maxpos；`add_count` 参数预留台账接入（未接入前按首层放量）。
+- 逐层累计不得突破 maxpos；`add_count` 已由 cost_tiers.json 成本批次回填。
 - 集成 `modules/position_manager.py`：`build_position_plan` 的"可加仓"分支追加 ladder 校验，结果取小者；entry 新增 `add_step/add_pct/ladder_alloc/ladder_cap_hit`。
 - 配置：`config.json` + `modules/config.py` 新增 `add_ladder.max_steps/tiers/min_gap`（默认兜底，缺省不影响旧行为）。
 - 测试：`tests/test_add_ladder.py` 新增 10 例。
@@ -38,7 +38,7 @@
 ## 四、遗留事项
 
 - **单笔风险预算**（风险 = 总资产×1.5% ÷ 止损距离）待实施：需先定止损距离政策（固定 10%？ATR？按层回撤线？）。
-- **加仓台账**未落地：当前 ladder 按首层放量，`add_count` 参数已预留；后续可把真实成交（`data/execution_log.json`）的加仓笔数回填。
+- **加仓台账**已落地：`add_count` = `notes/cost_tiers.json` 成本批次数（每批=一次加仓），正金字塔按真实层级放量；UI 显示"已加 N 次"。
 - 既有失败测试（test_daily_picks / test_actual_holdings）未在本期处理，与本改动无关。
 ## 五、Phase 3：单笔风险预算（2026-08-20 追加）
 

@@ -62,6 +62,9 @@ def render(tab, df=None, layer_summaries=None):
                     alloc = e.get("ladder_alloc") or []
                     if alloc:
                         ladder_txt += f"（{'>'.join(f'+{a}' for a in alloc)}）"
+                    ac = e.get("add_count", 0)
+                    if ac:
+                        ladder_txt += f" 已加{ac}次"
                 rb = e.get("risk_budget")
                 rb_txt = ""
                 if rb and rb.get("max_value"):
