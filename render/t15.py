@@ -1,9 +1,11 @@
 import streamlit as st  # noqa
 # 本模块由 app.py 自动抽取生成
 
+import logging
 import streamlit as st
 import pandas as pd
 from modules.cost_tier import (load_all as ct_load)
+logger = logging.getLogger(__name__)
 
 def render(tab, df=None, layer_summaries=None):
     with tab:
@@ -20,9 +22,24 @@ def render(tab, df=None, layer_summaries=None):
                 price = float(r.get("price") or 0)
                 if code and price > 0:
                     tier_by_code[code] = calc_overall_tier(code, price).get("tier", "数据不足")
-            plan = build_position_plan(df.to_dict("records"), tier_by_code=tier_by_code)
+            capital = None
+            try:
+                from modules.holdings import get_actual_holdings
+                _ah = get_actual_holdings()
+                if _ah and _ah.get("capital"):
+                    capital = float(_ah["capital"])
+                if not capital:
+                    # broker 源无本金概念(capital=0), 回退到模拟盘/虚拟本金
+                    from modules.paper_trader import VIRTUAL_CAPITAL, _get_paper_portfolio
+                    _pf = _get_paper_portfolio() or {}
+                    capital = float(_pf.get("capital") or VIRTUAL_CAPITAL or 0) or None
+            except Exception as _e:
+                logger.warning("t15 capital 读取失败: %s", _e)
+            plan = build_position_plan(df.to_dict("records"), tier_by_code=tier_by_code, capital=capital)
             s = plan["summary"]
             st.markdown("### 🧭 仓位管理")
+            if capital:
+                st.caption(f"总资产 ≈ ¥{capital:,.0f}｜单笔风险预算默认每笔最多亏 1.5%（止损 5%）")
             c1, c2, c3, c4, c5, c6 = st.columns(6)
             c1.metric("当前总仓位", f"{s['total_current']:.1f}%")
             c2.metric("目标总仓位", f"{s['total_target']:.1f}%")

@@ -69,4 +69,4 @@
 
 **验证**：pytest 265 passed；100 万资产 → 每笔最多亏 1.5 万（止损 5%）→ 本笔封顶 30 万/30%。
 
-**遗留**：capital 需由调用方传入（t15 当前未传，UI 暂不显示风险上限，仅引擎/测试生效）。
+**遗留（已跟进）**：capital 需由调用方传入。t15 已接入：优先 holdings.get_actual_holdings() 的 capital（broker 源为 0 时回退 paper portfolio / VIRTUAL_CAPITAL），UI 现显示总资产与单笔风险上限列。
