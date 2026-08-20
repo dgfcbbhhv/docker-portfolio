@@ -102,6 +102,7 @@ def test_send_non_dry(monkeypatch):
     """非 dry-run 触发推送。"""
     monkeypatch.setattr(dpusher, "_freshness_ok", lambda: True)
     monkeypatch.setattr(dpusher, "_already_pushed", lambda *a, **k: False)
+    monkeypatch.setattr(dpusher, "_mark_pushed", lambda *a, **k: None)
     sent_calls = []
     monkeypatch.setattr(dpusher, "build_picks",
                         lambda include_announcements=True: {
@@ -128,6 +129,7 @@ def test_market_filter_us(monkeypatch):
     """US 市场只保留美股标的。"""
     monkeypatch.setattr(dpusher, "_freshness_ok", lambda: True)
     monkeypatch.setattr(dpusher, "_already_pushed", lambda *a, **k: False)
+    monkeypatch.setattr(dpusher, "_mark_pushed", lambda *a, **k: None)
     sent_calls = []
     monkeypatch.setattr(dpusher, "build_picks",
                         lambda include_announcements=True: {

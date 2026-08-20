@@ -12,6 +12,32 @@ if [ -f /app/.env ]; then
     set +a
 fi
 
+# DNS 预热：容器刚启动时解析器可能瞬时不可用/未就绪，导致首轮
+# 告警、每日选股推送的 bark 请求 DNS 解析失败(Errno -5)。
+# 启动应用前对关键域名做一次带重试的解析(最长约 40s, 解析成功即提前返回)。
+warm_dns() {
+    python3 - "$@" <<'PY'
+import socket, sys, time
+hosts = [h for h in sys.argv[1:] if h]
+for host in hosts:
+    for i in range(20):
+        try:
+            socket.gethostbyname(host)
+            break
+        except Exception:
+            time.sleep(2)
+    else:
+        sys.stderr.write("[entrypoint] warn: dns unresolved for %s\n" % host)
+PY
+}
+
+# 从 BARK_URL 提取自建 bark 域名做预热（公共服务器无需）
+BARK_HOST=$(printf '%s' "$BARK_URL" | python3 -c \
+    "import sys,urllib.parse; u=urllib.parse.urlparse(sys.stdin.read().strip()); print(u.netloc or '')" 2>/dev/null || true)
+if [ -n "$BARK_HOST" ]; then
+    warm_dns "$BARK_HOST"
+fi
+
 # 东方财富 DNS 固化：push2 系域名指向 push2delay 可用 IPv4（HTTP 通道）
 # 避免宽带对 push2 HTTPS API 的 TLS reset 导致行情拉取失败
 if ! grep -q "101.226.30.136" /etc/hosts 2>/dev/null; then
@@ -25,6 +51,7 @@ chown -R app:app /app/data /app/notes 2>/dev/null || true
 chown -R app:app /app/modules/data 2>/dev/null || true
 # 长桥 token 自动续期需写回 .env (否则重启后仍读旧 token)
 chown -R app:app /app/.env 2>/dev/null || true
+chmod 644 /app/config.json 2>/dev/null || true
 # 非 root 下 HOME 需可写：Streamlit 写安装指标到 $HOME/.streamlit，默认 /root 不可写
 export HOME=/home/app
 mkdir -p "$HOME" && chown -R app:app "$HOME" 2>/dev/null || true

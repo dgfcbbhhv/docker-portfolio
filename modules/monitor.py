@@ -258,7 +258,7 @@ def check_scheduled_tasks():
     else:
         parts.append("A/H 选股今日不适用或未到检查时间")
 
-    if push_enabled and _is_trading_day_us(now.date()) and _hhmm_passed(now, time_us, TASK_GRACE_MIN):
+    if push_enabled and _is_trading_day_us(now.date() - datetime.timedelta(days=1)) and _hhmm_passed(now, time_us, TASK_GRACE_MIN):
         rec = st.get("US:picks") or {}
         if rec.get("date") == today:
             parts.append("US 选股已推送")

@@ -45,6 +45,25 @@ DATA_DIR = os.path.join(_ROOT, "data")
 STATE_PATH = os.path.join(DATA_DIR, "alert_worker_state.json")
 HEARTBEAT_PATH = os.path.join(DATA_DIR, "worker_heartbeat.json")
 
+# —— 每日选股推送失败自动重试 ——
+# 行情源偶发全部失败(尤其早盘前)时, 首次到点推送可能失败;
+# 若直接结束会让调度器认为当天已执行, 导致当天不再补推、监控误报。
+# 这里在 interval 任务里周期性补推, 直到成功或达到重试上限/截止时间。
+DAILY_RETRY_INTERVAL = int(os.environ.get("DAILY_RETRY_INTERVAL", "600"))
+DAILY_RETRY_MAX = int(os.environ.get("DAILY_RETRY_MAX", "30"))
+# 各市场当日补推截止时刻(北京时), 错过即放弃当天推送
+DAILY_RETRY_UNTIL = {"US": "12:00", "AH": "22:00"}
+
+
+def _hhmm_before(hhmm):
+    """当前时刻是否早于给定 HH:MM(北京时)。"""
+    try:
+        h, m = hhmm.strip().split(":")
+        limit = datetime.time(int(h), int(m))
+    except (ValueError, AttributeError):
+        return True
+    return datetime.datetime.now().time().replace(microsecond=0) < limit
+
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger("alert_worker")
@@ -223,8 +242,57 @@ class AlertWorker:
             return
         try:
             build_and_send(market=market)
+            # 成功: 清理该市场的重试标记
+            retry = self.state.get("daily_retry") or {}
+            if market in retry:
+                del retry[market]
+                self.state["daily_retry"] = retry
+                _save_state(self.state)
+                logger.info("daily push %s 重试成功, 已清理重试标记", market)
         except Exception as e:
             logger.exception("daily picks push failed (%s): %s", market, e)
+            self._queue_daily_retry(market)
+
+    def _queue_daily_retry(self, market):
+        """记录推送失败, 由 daily_push_retry 任务按间隔补推。"""
+        now = time.time()
+        retry = self.state.setdefault("daily_retry", {})
+        r = retry.get(market) or {}
+        r["date"] = datetime.datetime.now().date().isoformat()
+        r["retries"] = int(r.get("retries", 0)) + 1
+        r["next_ts"] = now + DAILY_RETRY_INTERVAL
+        retry[market] = r
+        _save_state(self.state)
+        logger.warning("daily push %s 失败, 已加入重试队列(第 %d 次, %d 秒后补推)",
+                       market, r["retries"], DAILY_RETRY_INTERVAL)
+
+    def _retry_daily_pushes(self):
+        """补推昨日/当日失败过的每日选股, 不阻塞调度器主循环。"""
+        retry = self.state.get("daily_retry") or {}
+        if not retry:
+            return
+        now = time.time()
+        today = datetime.datetime.now().date().isoformat()
+        for market in list(retry):
+            r = retry[market]
+            # 新的一天由调度器重新触发正式推送, 清掉昨日残留重试
+            if r.get("date") != today:
+                del retry[market]
+                continue
+            if not _hhmm_before(DAILY_RETRY_UNTIL.get(market, "23:00")):
+                logger.warning("daily push %s 已过截止时间(%s), 停止补推",
+                               market, DAILY_RETRY_UNTIL.get(market, "23:00"))
+                del retry[market]
+                continue
+            if int(r.get("retries", 0)) >= DAILY_RETRY_MAX:
+                logger.error("daily push %s 补推达上限(%d 次), 放弃当天推送",
+                             market, DAILY_RETRY_MAX)
+                del retry[market]
+                continue
+            if r.get("next_ts", 0) > now:
+                continue
+            logger.info("daily push %s 补推(第 %d 次)", market, r["retries"])
+            self._push_daily_picks(market)
 
     def _run_crosscheck(self):
         from modules.config import CROSSCHECK
@@ -504,6 +572,7 @@ class AlertWorker:
         scheduler.add_task("heartbeat", _write_heartbeat, 60)
         scheduler.add_task("paper_daily", self._paper_daily_check, 300,
                            run_immediately=True)
+        scheduler.add_task("daily_push_retry", self._retry_daily_pushes, 60)
         if DAILY_PUSH.get("enabled"):
             scheduler.add_daily_task("daily_push_ah", lambda: self._push_daily_picks("AH"),
                                      DAILY_PUSH.get("time_ah", "16:30"))

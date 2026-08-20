@@ -35,6 +35,9 @@ services:
     container_name: dividend-portfolio
     network_mode: host
     restart: unless-stopped
+    dns:
+      - 223.5.5.5
+      - 119.29.29.29
     environment:
       <<: *alert-env
       MODE: portfolio
@@ -52,7 +55,8 @@ services:
     network_mode: host
     restart: unless-stopped
     dns:
-      - 192.168.1.1
+      - 223.5.5.5
+      - 119.29.29.29
     environment:
       <<: *alert-env
       MODE: alert-worker
@@ -69,6 +73,9 @@ services:
     container_name: dividend-monitor
     network_mode: host
     restart: unless-stopped
+    dns:
+      - 223.5.5.5
+      - 119.29.29.29
     environment:
       <<: *alert-env
       MODE: monitor
