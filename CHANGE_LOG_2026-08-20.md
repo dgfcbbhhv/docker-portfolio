@@ -40,3 +40,33 @@
 - **单笔风险预算**（风险 = 总资产×1.5% ÷ 止损距离）待实施：需先定止损距离政策（固定 10%？ATR？按层回撤线？）。
 - **加仓台账**未落地：当前 ladder 按首层放量，`add_count` 参数已预留；后续可把真实成交（`data/execution_log.json`）的加仓笔数回填。
 - 既有失败测试（test_daily_picks / test_actual_holdings）未在本期处理，与本改动无关。
+## 五、Phase 3：单笔风险预算（2026-08-20 追加）
+
+**决策**：用户设定止损距离 5%-10%，实现取保守侧 5%（风险最大距离）。
+
+### 改动
+- 新增 ：（单笔上限=总资产×risk_pct÷止损距离）+ （与 ladder 取小者）。
+-  /  新增  段（）。
+- ： 新增  参数，提供时对可加仓标的计算  并封顶 ；entry 新增 。
+- ：新增单笔风险上限列。
+- 测试：（7 例）+  增 2 例。
+
+**验证**：pytest 265 passed；100 万资产 → 每笔最多亏 1.5 万（止损 5%）→ 本笔封顶 30 万/30%。
+
+**遗留**： 需由调用方传入（t15 当前未传，UI 暂不显示风险上限，仅引擎/测试生效）。
+
+
+## 五、Phase 3：单笔风险预算（2026-08-20 追加）
+
+**决策**：用户设定止损距离 5%-10%，实现取保守侧 5%（风险最大距离）。
+
+### 改动
+- 新增 modules/risk_budget.py：risk_budget_per_add（单笔上限=总资产x risk_pct 除 stop_loss）+ effective_add_value（与 ladder 取小者）。
+- config.json / config.py 新增 risk_budget 段（enabled/risk_pct=1.5/stop_loss_pct=5）。
+- position_manager.py：build_position_plan 新增 capital 参数，提供时对可加仓标的计算 risk_cap_pct 并封顶 add_pct；entry 新增 risk_budget/risk_cap_pct。
+- render/t15.py：新增"单笔风险上限"列。
+- 测试：tests/test_risk_budget.py（7 例）+ test_position_manager 增 2 例。
+
+**验证**：pytest 265 passed；100 万资产 → 每笔最多亏 1.5 万（止损 5%）→ 本笔封顶 30 万/30%。
+
+**遗留**：capital 需由调用方传入（t15 当前未传，UI 暂不显示风险上限，仅引擎/测试生效）。

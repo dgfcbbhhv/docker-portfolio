@@ -56,6 +56,11 @@ _DEFAULTS = {
         "tiers": [0.5, 0.3, 0.2],
         "min_gap": 2.0,
     },
+    "risk_budget": {
+        "enabled": True,
+        "risk_pct": 1.5,
+        "stop_loss_pct": 5.0,
+    },
 }
 
 
@@ -208,6 +213,14 @@ ADD_LADDER = {
     "min_gap": float(_AL.get("min_gap", 2.0)),
 }
 
+# ── 单笔风险预算 ──
+_RB = _CFG.get("risk_budget", {})
+RISK_BUDGET = {
+    "enabled": bool(_RB.get("enabled", True)),
+    "risk_pct": float(_RB.get("risk_pct", 1.5)),
+    "stop_loss_pct": float(_RB.get("stop_loss_pct", 5.0)),
+}
+
 
 def _apply_config(cfg):
     """从配置字典应用所有全局变量"""
@@ -217,7 +230,7 @@ def _apply_config(cfg):
     global ALERT_THRESHOLDS, ALERT_COOLDOWN_MINUTES, ALERT_BATCH_MIN, ALERT_RETRIES, ALERT_CHANNELS
     global SPOT_MAX_AGE_MINUTES, FIN_MAX_AGE_DAYS, DIV_MAX_AGE_DAYS, HIST_MAX_AGE_DAYS
     global DAILY_PUSH, CROSSCHECK, REIT_MONITOR
-    global PAPER_TRADE, ADD_LADDER
+    global PAPER_TRADE, ADD_LADDER, RISK_BUDGET
 
     PORT_A = cfg.get("portfolio", {}).get("A", {})
     PORT_HK = cfg.get("portfolio", {}).get("HK", {})
@@ -296,6 +309,13 @@ def _apply_config(cfg):
         "max_steps": int(_al.get("max_steps", 3)),
         "tiers": list(_al.get("tiers", [0.5, 0.3, 0.2])),
         "min_gap": float(_al.get("min_gap", 2.0)),
+    })
+
+    _rb = cfg.get("risk_budget", {})
+    RISK_BUDGET.update({
+        "enabled": bool(_rb.get("enabled", True)),
+        "risk_pct": float(_rb.get("risk_pct", 1.5)),
+        "stop_loss_pct": float(_rb.get("stop_loss_pct", 5.0)),
     })
 
 

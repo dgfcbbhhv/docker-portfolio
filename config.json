@@ -367,5 +367,10 @@
     "max_steps": 3,
     "tiers": [0.5, 0.3, 0.2],
     "min_gap": 2.0
+  },
+  "risk_budget": {
+    "enabled": true,
+    "risk_pct": 1.5,
+    "stop_loss_pct": 5.0
   }
 }

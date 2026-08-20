@@ -8,8 +8,9 @@
 5. Kelly 无加仓空间或加仓空间不足 → 持有
 6. 以上全部通过且空间 >= add_gap → 可加仓
 """
-from modules.config import DAILY_PUSH, LAYERS, MAX_TOTAL, MAXPOS
+from modules.config import DAILY_PUSH, LAYERS, MAX_TOTAL, MAXPOS, RISK_BUDGET
 from modules.add_ladder import plan_add_ladder
+from modules.risk_budget import risk_budget_per_add
 
 _GROUP_LAYER = {
     "A股持仓": "A",
@@ -26,7 +27,8 @@ def _f(v, default=0.0):
         return default
 
 
-def build_position_plan(rows, tier_by_code=None, freshness_codes=None, rules=None):
+def build_position_plan(rows, tier_by_code=None, freshness_codes=None, rules=None,
+                        capital=None):
     """根据持仓行生成逐只仓位结论与组合层状态。
 
     Args:
@@ -34,6 +36,7 @@ def build_position_plan(rows, tier_by_code=None, freshness_codes=None, rules=Non
         tier_by_code: {code: "黄金"/"白银"/"警戒"/"数据不足"}。
         freshness_codes: 数据新鲜度有问题的代码集合。
         rules: 可选覆盖 maxpos / max_total / lishing_buy / add_gap。
+        capital: 组合总资产（元）。提供时启用单笔风险预算约束。
     """
     rules = rules or {}
     maxpos = _f(rules.get("maxpos", MAXPOS))
@@ -90,6 +93,16 @@ def build_position_plan(rows, tier_by_code=None, freshness_codes=None, rules=Non
             reasons.append(ladder["reason"])
             gap = 0.0
 
+        # 单笔风险预算：cap_add_pct = 总资产×risk_pct÷止损距离，与 ladder 建议取小者
+        risk = None
+        rb_cap_pct = None
+        ladder_add_pct = ladder.get("add_pct", 0.0) if verdict == "可加仓" else 0.0
+        if verdict == "可加仓" and RISK_BUDGET.get("enabled") and capital:
+            risk = risk_budget_per_add(capital)
+            rb_cap_pct = round(min(risk["max_value"], capital) / capital * 100.0, 1) if capital else 0.0
+            if rb_cap_pct < ladder_add_pct:
+                ladder_add_pct = rb_cap_pct
+
         entries.append({
             "code": code,
             "name": name,
@@ -105,9 +118,11 @@ def build_position_plan(rows, tier_by_code=None, freshness_codes=None, rules=Non
             "verdict": verdict,
             "reasons": "；".join(reasons),
             "add_step": ladder.get("step"),
-            "add_pct": ladder.get("add_pct", 0.0),
+            "add_pct": round(ladder_add_pct, 1),
             "ladder_alloc": ladder.get("ladder_alloc", []),
             "ladder_cap_hit": ladder.get("cap_hit", False),
+            "risk_budget": risk,
+            "risk_cap_pct": rb_cap_pct,
             "div_reinvest": "可考虑分红再投入" if verdict == "可加仓" and dy > 0 else "分红先留存或等下次机会",
         })
 

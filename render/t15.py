@@ -45,11 +45,18 @@ def render(tab, df=None, layer_summaries=None):
                     alloc = e.get("ladder_alloc") or []
                     if alloc:
                         ladder_txt += f"（{'>'.join(f'+{a}' for a in alloc)}）"
+                rb = e.get("risk_budget")
+                rb_txt = ""
+                if rb and rb.get("max_value"):
+                    rb_txt = f"≤¥{rb['max_value']:,.0f}"
+                    if e.get("risk_cap_pct") is not None:
+                        rb_txt += f"（{e['risk_cap_pct']:.1f}%）"
                 entry_rows.append({
                     "代码": e["code"], "名称": e["name"], "当前%": e["current_ratio"],
                     "目标%": e["target_ratio"], "可加%": e["gap_ratio"],
                     "评分": e["lishing"], "股息率%": e["dy"], "档位": e["tier"],
                     "结论": verdict_label.get(e["verdict"], e["verdict"]), "金字塔": ladder_txt,
+                    "单笔风险上限": rb_txt,
                     "原因": e["reasons"], "分红": e["div_reinvest"],
                 })
             st.dataframe(pd.DataFrame(entry_rows), width="stretch", hide_index=True)

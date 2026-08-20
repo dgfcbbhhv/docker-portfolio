@@ -58,3 +58,26 @@ def test_summary_and_layers():
     a_layer = next(l for l in plan["layers"] if l["layer"] == "A")
     assert a_layer["current_ratio"] == 50.0
     assert a_layer["status"] == "正常"
+
+
+def test_risk_budget_caps_add_when_capital_given():
+    """给定 capital 时, add_pct 被单笔风险预算封顶(ladder 建议 > 预算时)。"""
+    rows = [_row(weight=5.0, target=20.0, lishing=82.0)]
+    plan = pm.build_position_plan(rows, tier_by_code={"600036": "黄金"}, capital=100000.0)
+    e = plan["entries"][0]
+    assert e["verdict"] == "可加仓"
+    # 10万 × 1.5% / 5% 止损 = 3万 = 30% 总资产封顶
+    assert e["risk_cap_pct"] == 30.0
+    assert e["risk_budget"]["max_value"] == 30000.0
+    # ladder 建议 gap 的一半 = 7.5% > 30%? 否: target20-current5=15, 首层=7.5
+    assert e["add_pct"] <= e["risk_cap_pct"]
+
+
+def test_risk_budget_disabled_without_capital():
+    """未提供 capital 时不启用风险预算, 不报错。"""
+    rows = [_row(weight=5.0, target=20.0, lishing=82.0)]
+    plan = pm.build_position_plan(rows, tier_by_code={"600036": "黄金"})
+    e = plan["entries"][0]
+    assert e["verdict"] == "可加仓"
+    assert e["risk_budget"] is None
+    assert e["risk_cap_pct"] is None

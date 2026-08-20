@@ -202,6 +202,13 @@ sh scripts/backup.sh
 - 未来接入加仓台账后，可注入 `add_count` 锁定当前所在层；未接入前按首层放量。
 - 配置：`config.json → add_ladder.max_steps/tiers/min_gap`。
 
+### 单笔风险预算（`risk_budget`）
+
+把"单笔最多亏多少"锁进公式：`单笔上限 = 总资产 × risk_pct ÷ 止损距离`。
+- 默认 `risk_pct=1.5%`（每笔最多亏总资产 1.5%）、`stop_loss_pct=5%`（止损距离），按你设定的 5%-10% 取保守侧。
+- 提供 `capital`（总资产）时启用，与 `add_ladder` 建议取小者；未提供则不约束（兼容旧调用）。
+- 配置：`config.json → risk_budget.enabled/risk_pct/stop_loss_pct`。
+
 ## 真实成交对账（推送 → 模拟 → 实盘）
 
 界面“真实成交对账”Tab 支持导入 A 股券商导出的成交明细（如 `Table_*.xlsx`，列含成交日期/证券代码/委托方向/成交数量/成交均价等）：
