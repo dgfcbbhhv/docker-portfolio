@@ -66,7 +66,7 @@ def _resolve_actual_ratios(rows, actual_holdings=None):
 
 
 def build_position_plan(rows, tier_by_code=None, freshness_codes=None, rules=None,
-                        capital=None, actual_holdings=None):
+                        capital=None, actual_holdings=None, frozen=False):
     """根据持仓行生成逐只仓位结论与组合层状态。
 
     主口径 = 目标权重（规划缺口）：current 取目标配置 weight，判断"距目标还差多少"，
@@ -80,6 +80,7 @@ def build_position_plan(rows, tier_by_code=None, freshness_codes=None, rules=Non
         capital: 组合总资产（元）。提供时启用单笔风险预算约束。
         actual_holdings: 真实持仓 {"positions": {code: {shares, avg_cost}}, "cash": x}。
             仅用于计算真实占比展示与"真实已超限"提示。
+        frozen: 组合级回撤熔断激活时 True，停止一切建仓/加仓建议。
     """
     rules = rules or {}
     maxpos = _f(rules.get("maxpos", MAXPOS))
@@ -107,7 +108,10 @@ def build_position_plan(rows, tier_by_code=None, freshness_codes=None, rules=Non
 
         reasons = []
         verdict = "可加仓"
-        if ls <= 0:
+        if frozen:
+            verdict = "暂停"
+            reasons.append("组合级回撤熔断，暂停建仓/加仓")
+        elif ls <= 0:
             verdict = "停止加仓"
             reasons.append("评分不可用或触发红旗")
         elif code in freshness_codes or "manual" in data_flags:

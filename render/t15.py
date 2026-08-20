@@ -45,11 +45,37 @@ def render(tab, df=None, layer_summaries=None):
             plan = build_position_plan(df.to_dict("records"), tier_by_code=tier_by_code,
                                        capital=capital, actual_holdings=actual_holdings)
             s = plan["summary"]
+
+            # 组合级回撤熔断：记录当日总市值快照，触发后冻结建仓/加仓
+            frozen = False
+            try:
+                from modules.drawdown_guard import record_snapshot, current_drawdown
+                if capital:
+                    rec = record_snapshot(capital)
+                    frozen = rec["frozen"]
+                    s = plan["summary"]
+                else:
+                    dd = current_drawdown()
+                    frozen = dd.get("frozen", False)
+            except Exception as _e:
+                logger.warning("t15 回撤熔断检查失败: %s", _e)
+            if frozen:
+                plan = build_position_plan(df.to_dict("records"), tier_by_code=tier_by_code,
+                                           capital=capital, actual_holdings=actual_holdings, frozen=True)
+                s = plan["summary"]
+
             st.markdown("### 🧭 仓位管理")
             st.caption("口径：目标配置权重（规划缺口，先建底仓）｜真实占比仅作提示" +
                        (f"｜总资产 ≈ ¥{capital:,.0f}" if capital else ""))
             if capital:
                 st.caption(f"总资产 ≈ ¥{capital:,.0f}｜单笔风险预算默认每笔最多亏 1.5%（止损 5%）")
+            if frozen:
+                try:
+                    dd = current_drawdown()
+                    st.error(f"🔴 组合级回撤熔断：当前回撤 {dd.get('drawdown_pct', 0)}% ≥ 阈值 "
+                             f"{dd.get('threshold', 10)}%，暂停一切建仓/加仓（保留止损/卖出提示）")
+                except Exception:
+                    st.error("🔴 组合级回撤熔断已激活：暂停建仓/加仓")
 
             # 止损提醒：真实持仓回撤监控
             try:

@@ -378,7 +378,7 @@ def build_picks(include_announcements=True):
     meta = dict(meta)
     meta["blocked"] = blocked_meta
     return {"date": datetime.date.today().isoformat(), "picks": picks,
-            "skipped": skipped, "meta": meta}
+            "skipped": skipped, "meta": meta, "_df": df}
 
 
 def _fetch_announcement(code):
@@ -455,5 +455,23 @@ def compose_message(picks_result, market="AH"):
         lines.append("理由:")
         lines.extend(p["lines"])
         lines.append("")
+    _append_stop_loss_lines(lines, picks_result.get("_df"))
     lines.append(_footer())
     return "\n".join(lines)
+
+
+def _append_stop_loss_lines(lines, df=None):
+    """把真实持仓的止损提醒并入推送文案（无持仓或未触发时静默）。"""
+    try:
+        from modules.stop_loss_monitor import stop_loss_from_df
+        if df is None:
+            from modules.portfolio_engine import build_portfolio_df
+            df, _meta = build_portfolio_df()
+        r = stop_loss_from_df(df)
+        if r["triggers"]:
+            lines.append("")
+            lines.append("🔴 止损提醒:")
+            for t in r["triggers"]:
+                lines.append(f"  - {t}")
+    except Exception:
+        pass
