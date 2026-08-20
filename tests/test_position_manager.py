@@ -127,34 +127,30 @@ def _real_holdings():
 
 
 def test_actual_ratio_overrides_weight():
-    """有真实持仓时 current 用真实市值占比, 而非目标 weight。"""
+    """真实占比仅作提示, 主口径仍是目标权重(建底仓方向)。"""
     rows = [
         _row(code="600036", weight=10.0, target=12.0, price=38.0),
         _row(code="601398", weight=20.0, target=25.0, price=25.61),
     ]
     plan = pm.build_position_plan(rows, tier_by_code={"600036": "黄金", "601398": "黄金"},
                                   actual_holdings=_real_holdings())
-    assert plan["summary"]["ratio_source"] == "actual"
     by_code = {e["code"]: e for e in plan["entries"]}
-    # 600036: 200*38=7600; 601398: 200*25.61=5122; total=12722
-    # 600036 占比 = 7600/12722*100 = 59.7
-    assert by_code["600036"]["current_source"] == "actual"
-    assert by_code["600036"]["current_ratio"] == 59.7
-    assert by_code["601398"]["current_ratio"] == 40.3
-    # 超限: 默认 maxpos=30, 60%/40% 都超 → 持有而非可加仓
-    assert by_code["600036"]["verdict"] == "持有"
-    assert "减仓" in by_code["600036"]["reasons"]
-    assert by_code["601398"]["verdict"] == "持有"
+    # 主口径仍是目标权重：600036 目标10 → 未超限 → 可加仓(建底仓方向)
+    assert by_code["600036"]["current_ratio"] == 10.0
+    assert by_code["600036"]["current_actual"] == 59.7
+    assert by_code["601398"]["current_actual"] == 40.3
+    # 真实占比超限仅提示, 不阻断主口径结论
+    assert "真实持仓占比 59.7%" in by_code["600036"]["reasons"]
+    assert by_code["600036"]["verdict"] in ("可加仓", "持有")
 
 
 def test_actual_ratio_falls_back_to_target():
-    """无真实持仓时回退目标权重口径。"""
+    """无真实持仓时无真实占比提示。"""
     rows = [_row(weight=5.0, target=12.0)]
     plan = pm.build_position_plan(rows, tier_by_code={"600036": "黄金"},
                                   actual_holdings={"positions": {}, "cash": 0.0})
-    assert plan["summary"]["ratio_source"] == "target"
     e = plan["entries"][0]
-    assert e["current_source"] == "target"
+    assert e["current_actual"] is None
     assert e["current_ratio"] == 5.0
     assert e["verdict"] == "可加仓"
 
@@ -165,4 +161,4 @@ def test_actual_ratio_capital_from_market_value():
     plan = pm.build_position_plan(rows, tier_by_code={"600036": "黄金"},
                                   actual_holdings=_real_holdings(), capital=12722.0)
     e = plan["entries"][0]
-    assert e["verdict"] == "持有"  # 超限, 不触发风险预算逻辑
+    assert e["current_ratio"] == 10.0

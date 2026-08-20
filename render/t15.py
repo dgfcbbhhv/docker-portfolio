@@ -46,10 +46,8 @@ def render(tab, df=None, layer_summaries=None):
                                        capital=capital, actual_holdings=actual_holdings)
             s = plan["summary"]
             st.markdown("### 🧭 仓位管理")
-            src_label = {"actual": "真实持仓市值占比", "target": "目标配置权重"}
-            st.caption(f"口径：{src_label.get(s.get('ratio_source'), s.get('ratio_source'))}｜"
-                       f"总资产 ≈ ¥{capital:,.0f}" if capital else
-                       f"口径：{src_label.get(s.get('ratio_source'), s.get('ratio_source'))}")
+            st.caption("口径：目标配置权重（规划缺口，先建底仓）｜真实占比仅作提示" +
+                       (f"｜总资产 ≈ ¥{capital:,.0f}" if capital else ""))
             if capital:
                 st.caption(f"总资产 ≈ ¥{capital:,.0f}｜单笔风险预算默认每笔最多亏 1.5%（止损 5%）")
 
@@ -94,9 +92,11 @@ def render(tab, df=None, layer_summaries=None):
                     rb_txt = f"≤¥{rb['max_value']:,.0f}"
                     if e.get("risk_cap_pct") is not None:
                         rb_txt += f"（{e['risk_cap_pct']:.1f}%）"
+                cur_txt = f"{e['current_ratio']}%"
+                if e.get("current_actual") is not None:
+                    cur_txt += f"（真{e['current_actual']:.1f}%）"
                 entry_rows.append({
-                    "代码": e["code"], "名称": e["name"], "当前%": e["current_ratio"],
-                    "口径": src_label.get(e.get("current_source"), e.get("current_source") or "目标配置权重"),
+                    "代码": e["code"], "名称": e["name"], "当前%": cur_txt,
                     "目标%": e["target_ratio"], "可加%": e["gap_ratio"],
                     "评分": e["lishing"], "股息率%": e["dy"], "档位": e["tier"],
                     "结论": verdict_label.get(e["verdict"], e["verdict"]), "金字塔": ladder_txt,

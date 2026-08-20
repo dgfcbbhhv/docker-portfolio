@@ -28,11 +28,10 @@ def _f(v, default=0.0):
 
 
 def _resolve_actual_ratios(rows, actual_holdings=None):
-    """真实市值占比。
+    """真实市值占比（仅供展示提示，不参与加仓判断）。
 
-    有真实持仓时：真实市值占比 = 该股市值 / (总市值 + 现金)。
-    返回 (ratio_map, source)，ratio_map: {code: float(%)}；source: "actual" | "target"。
-    真实持仓为空时返回 ({}, "target")，调用方回退目标权重。
+    返回 {code: float(%)}；真实持仓为空时返回 {}。
+    加仓建议主口径为目标权重（规划缺口），见 build_position_plan。
     """
     ah = actual_holdings
     if ah is None:
@@ -43,8 +42,7 @@ def _resolve_actual_ratios(rows, actual_holdings=None):
             ah = {}
     pos = (ah or {}).get("positions") or {}
     if not pos:
-        return {}, "target"
-    # 用行内现价估算市值（无现价回退成本）
+        return {}
     price_map = {}
     for r in rows:
         code = str(r.get("code", ""))
@@ -63,13 +61,16 @@ def _resolve_actual_ratios(rows, actual_holdings=None):
     cash = _f((ah or {}).get("cash", 0))
     denom = total_mv + cash
     if denom <= 0:
-        return {}, "target"
-    return {code: round(mv / denom * 100.0, 1) for code, mv in per_mv.items()}, "actual"
+        return {}
+    return {code: round(mv / denom * 100.0, 1) for code, mv in per_mv.items()}
 
 
 def build_position_plan(rows, tier_by_code=None, freshness_codes=None, rules=None,
                         capital=None, actual_holdings=None):
     """根据持仓行生成逐只仓位结论与组合层状态。
+
+    主口径 = 目标权重（规划缺口）：current 取目标配置 weight，判断"距目标还差多少"，
+    无真实持仓的股票因 weight=目标 会提示建底仓。真实市值占比仅作展示提示。
 
     Args:
         rows: 主界面 DataFrame 的行（dict 或 Series）。
@@ -78,7 +79,7 @@ def build_position_plan(rows, tier_by_code=None, freshness_codes=None, rules=Non
         rules: 可选覆盖 maxpos / max_total / lishing_buy / add_gap。
         capital: 组合总资产（元）。提供时启用单笔风险预算约束。
         actual_holdings: 真实持仓 {"positions": {code: {shares, avg_cost}}, "cash": x}。
-            提供时该股 current 用真实市值占比；缺省自动调 holdings.get_actual_holdings()。
+            仅用于计算真实占比展示与"真实已超限"提示。
     """
     rules = rules or {}
     maxpos = _f(rules.get("maxpos", MAXPOS))
@@ -87,19 +88,16 @@ def build_position_plan(rows, tier_by_code=None, freshness_codes=None, rules=Non
     add_gap = _f(rules.get("add_gap", DAILY_PUSH["add_gap"]))
     tier_by_code = tier_by_code or {}
     freshness_codes = set(freshness_codes or [])
-    actual_ratios, ratio_source = _resolve_actual_ratios(rows, actual_holdings)
+    actual_ratios = _resolve_actual_ratios(rows, actual_holdings)
 
     entries = []
     for r in rows:
         code = str(r.get("code", ""))
         name = str(r.get("name", code))
         group = str(r.get("group", ""))
-        # 有真实持仓用真实市值占比，否则回退目标权重（规划缺口口径）
-        actual_ratio = actual_ratios.get(code)
-        if ratio_source == "actual" and actual_ratio is not None:
-            current = actual_ratio
-        else:
-            current = _f(r.get("weight", r.get("ratio", 0)))
+        # 主口径 = 目标权重（规划缺口）；真实占比仅展示
+        current = _f(r.get("weight", r.get("ratio", 0)))
+        current_actual = actual_ratios.get(code)
         target = _f(r.get("kelly_portfolio_adj", 0))
         ls = _f(r.get("lishing", 0))
         dy = _f(r.get("dy", 0))
@@ -120,10 +118,7 @@ def build_position_plan(rows, tier_by_code=None, freshness_codes=None, rules=Non
             reasons.append("成本档位警戒")
         elif current >= maxpos:
             verdict = "持有"
-            if ratio_source == "actual":
-                reasons.append(f"真实持仓占比 {current:.1f}% 已达单票上限 {maxpos:.0f}%，建议减仓")
-            else:
-                reasons.append("已达单票上限")
+            reasons.append("已达单票上限")
         elif target <= 0:
             verdict = "持有"
             reasons.append("Kelly 无加仓空间")
@@ -162,13 +157,18 @@ def build_position_plan(rows, tier_by_code=None, freshness_codes=None, rules=Non
             if rb_cap_pct < ladder_add_pct:
                 ladder_add_pct = rb_cap_pct
 
+        # 真实占比超单票上限：提示（不改变主口径结论）
+        real_hint = ""
+        if current_actual is not None and current_actual >= maxpos:
+            real_hint = f"真实持仓占比 {current_actual:.1f}% 已超单票上限 {maxpos:.0f}%"
+
         entries.append({
             "code": code,
             "name": name,
             "group": group,
             "layer": _GROUP_LAYER.get(group, group),
             "current_ratio": round(current, 1),
-            "current_source": ratio_source,
+            "current_actual": current_actual,
             "target_ratio": round(target, 1),
             "gap_ratio": round(gap, 1),
             "lishing": ls,
@@ -176,7 +176,7 @@ def build_position_plan(rows, tier_by_code=None, freshness_codes=None, rules=Non
             "price": price,
             "tier": tier,
             "verdict": verdict,
-            "reasons": "；".join(reasons),
+            "reasons": "；".join(reasons) + (f"；{real_hint}" if real_hint else ""),
             "add_step": ladder.get("step"),
             "add_pct": round(ladder_add_pct, 1),
             "add_count": add_count,
@@ -217,7 +217,6 @@ def build_position_plan(rows, tier_by_code=None, freshness_codes=None, rules=Non
         "stopped": sum(1 for e in entries if e["verdict"] == "停止加仓"),
         "over_single_limit": sum(1 for e in entries if e["current_ratio"] >= maxpos),
         "freshness_codes": sorted(freshness_codes),
-        "ratio_source": ratio_source,
     }
     return {"entries": entries, "layers": layers, "summary": summary, "rules": {
         "maxpos": maxpos, "max_total": max_total, "buy_th": buy_th, "add_gap": add_gap}}
