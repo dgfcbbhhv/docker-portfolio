@@ -51,6 +51,11 @@ _DEFAULTS = {
         "picks_buy_pct": 10.0,
         "picks_reduce_ratio": 0.5,
     },
+    "add_ladder": {
+        "max_steps": 3,
+        "tiers": [0.5, 0.3, 0.2],
+        "min_gap": 2.0,
+    },
 }
 
 
@@ -195,6 +200,14 @@ PAPER_TRADE = {
     "picks_reduce_ratio": float(_PT.get("picks_reduce_ratio", 0.5)),
 }
 
+# ── 正金字塔加仓层级 ──
+_AL = _CFG.get("add_ladder", {})
+ADD_LADDER = {
+    "max_steps": int(_AL.get("max_steps", 3)),
+    "tiers": list(_AL.get("tiers", [0.5, 0.3, 0.2])),
+    "min_gap": float(_AL.get("min_gap", 2.0)),
+}
+
 
 def _apply_config(cfg):
     """从配置字典应用所有全局变量"""
@@ -204,7 +217,7 @@ def _apply_config(cfg):
     global ALERT_THRESHOLDS, ALERT_COOLDOWN_MINUTES, ALERT_BATCH_MIN, ALERT_RETRIES, ALERT_CHANNELS
     global SPOT_MAX_AGE_MINUTES, FIN_MAX_AGE_DAYS, DIV_MAX_AGE_DAYS, HIST_MAX_AGE_DAYS
     global DAILY_PUSH, CROSSCHECK, REIT_MONITOR
-    global PAPER_TRADE
+    global PAPER_TRADE, ADD_LADDER
 
     PORT_A = cfg.get("portfolio", {}).get("A", {})
     PORT_HK = cfg.get("portfolio", {}).get("HK", {})
@@ -276,6 +289,13 @@ def _apply_config(cfg):
         "auto_follow_picks": bool(_pt.get("auto_follow_picks", True)),
         "picks_buy_pct": float(_pt.get("picks_buy_pct", 10.0)),
         "picks_reduce_ratio": float(_pt.get("picks_reduce_ratio", 0.5)),
+    })
+
+    _al = cfg.get("add_ladder", {})
+    ADD_LADDER.update({
+        "max_steps": int(_al.get("max_steps", 3)),
+        "tiers": list(_al.get("tiers", [0.5, 0.3, 0.2])),
+        "min_gap": float(_al.get("min_gap", 2.0)),
     })
 
 

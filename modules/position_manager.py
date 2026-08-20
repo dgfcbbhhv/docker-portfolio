@@ -9,6 +9,7 @@
 6. 以上全部通过且空间 >= add_gap → 可加仓
 """
 from modules.config import DAILY_PUSH, LAYERS, MAX_TOTAL, MAXPOS
+from modules.add_ladder import plan_add_ladder
 
 _GROUP_LAYER = {
     "A股持仓": "A",
@@ -79,6 +80,16 @@ def build_position_plan(rows, tier_by_code=None, freshness_codes=None, rules=Non
             reasons.append("评分达标且有加仓空间")
 
         gap = max(0.0, target - current) if verdict == "可加仓" else 0.0
+
+        ladder = plan_add_ladder(
+            current, target, tier=tier, lishing=ls, buy_th=buy_th,
+            maxpos=maxpos, min_gap=add_gap)
+        ladder_verdict = ladder["verdict"]
+        if verdict == "可加仓" and ladder_verdict != "可加仓":
+            verdict = "持有"
+            reasons.append(ladder["reason"])
+            gap = 0.0
+
         entries.append({
             "code": code,
             "name": name,
@@ -93,6 +104,10 @@ def build_position_plan(rows, tier_by_code=None, freshness_codes=None, rules=Non
             "tier": tier,
             "verdict": verdict,
             "reasons": "；".join(reasons),
+            "add_step": ladder.get("step"),
+            "add_pct": ladder.get("add_pct", 0.0),
+            "ladder_alloc": ladder.get("ladder_alloc", []),
+            "ladder_cap_hit": ladder.get("cap_hit", False),
             "div_reinvest": "可考虑分红再投入" if verdict == "可加仓" and dy > 0 else "分红先留存或等下次机会",
         })
 

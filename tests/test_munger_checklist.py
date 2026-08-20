@@ -72,3 +72,30 @@ def test_score_trend():
     assert latest == 80.0
     assert before == 90.0
     assert delta == -10.0
+
+
+def test_q0_allows_add_when_fundamentals_ok():
+    r = build_checklist("600900", _row(lishing=82.0), df=_df(), tier="黄金")
+    assert r["q0"]["action"] == "可补仓"
+    assert "会" in r["q0"]["conclusion"]
+
+
+def test_q0_blocks_when_score_low():
+    r = build_checklist("600900", _row(lishing=55.0), df=_df())
+    assert r["q0"]["action"] == "不补仓"
+
+
+def test_q0_blocks_when_tier_alert():
+    r = build_checklist("600900", _row(lishing=82.0), df=_df(), tier="警戒")
+    assert r["q0"]["action"] == "不补仓"
+    assert "档位" in r["q0"]["conclusion"]
+
+
+def test_q0_note_appended_when_blocked_add():
+    r = build_checklist("600900", _row(lishing=82.0), df=_df(), tier="警戒")
+    assert "不补仓" in r["q6"]["reason"]
+
+
+def test_q0_not_appended_when_sell():
+    r = build_checklist("600900", _row(lishing=0.0), df=_df())
+    assert "参考点重置" not in r["q6"]["reason"]

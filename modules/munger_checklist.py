@@ -52,8 +52,12 @@ def _score_trend(score_hist, code):
 def build_checklist(code, row, *, df=None, layer_summaries=None, score_hist=None,
                     manual_div_yields=None, layers_cfg=None, kelly_cfg=None,
                     watch_list=None, regime=None, freshness_issues=None,
-                    max_drawdown_line=10.0, buy_scores=None, mood=None):
-    """对单只标的运行芒格 6 问，返回结构化报告 dict。"""
+                    max_drawdown_line=10.0, buy_scores=None, mood=None,
+                    tier=None):
+    """对单只标的运行芒格 6 问，返回结构化报告 dict。
+
+    tier: 成本档位（"黄金"/"白银"/"警戒"），用于 Q0 参考点重置判断。
+    """
     name = row.get("name", code)
     group = row.get("group", "")
     ratio = _num(row.get("ratio"), 0) or _num(row.get("ratio_norm"), 0)
@@ -195,6 +199,27 @@ def build_checklist(code, row, *, df=None, layer_summaries=None, score_hist=None
         "换仓前提: 评分/股息率/置信度显著更优，否则不动",
     ]
 
+    # ── Q0 参考点重置：若我此刻持现金，这个价格还会买吗？──
+    if tier and tier == "警戒":
+        q0_conc = "不会（成本档位警戒，摊薄后缺乏安全边际）"
+        q0_action = "不补仓"
+    elif red_line or ls_eff is not None and ls_eff < WATCH_LINE:
+        q0_conc = "不会（基本面已恶化，现金买入也属于接飞刀）"
+        q0_action = "不补仓"
+    elif ls_eff is not None and ls_eff < BUY_LINE:
+        q0_conc = "犹豫（评分 < 70，现金买入同样无加仓依据）"
+        q0_action = "不补仓"
+    elif q2_action == "逻辑已破":
+        q0_conc = "不会（买入逻辑已破，现金不会重新买）"
+        q0_action = "不补仓"
+    else:
+        q0_conc = "会（评分/逻辑/档位均达标，现金也会在此价买入）"
+        q0_action = "可补仓"
+    q0_evidence = [
+        f"李氏评分: {_fmt(ls_eff)} | 成本档位: {tier or 'N/A'}",
+        "判定标准：参考点重置——抹掉持仓成本，只问'持现金是否还愿意买'",
+    ]
+
     # ── Q6 决策门 ──
     if fresh:
         action, label = "freeze", "冻结不动"
@@ -216,6 +241,8 @@ def build_checklist(code, row, *, df=None, layer_summaries=None, score_hist=None
         action, label = "hold", "继续持有"
         reason = "基本面未变、逻辑未破、仓位合理，无动作依据"
 
+    if q0_action == "不补仓" and action in ("add", "hold"):
+        reason = reason + "｜参考点重置：若持现金不再愿买入，不补仓"
     qty = None
     if action in ("add", "reduce", "sell") and gap is not None:
         qty = abs(gap)
@@ -243,6 +270,7 @@ def build_checklist(code, row, *, df=None, layer_summaries=None, score_hist=None
         "date": datetime.date.today().isoformat(),
         "mood": mood,
         "chg": chg,
+        "q0": {"conclusion": q0_conc, "action": q0_action, "evidence": q0_evidence},
         "q1": {"conclusion": q1_conc, "action": q1_action, "evidence": q1_evidence},
         "q2": {"conclusion": q2_conc, "action": q2_action, "evidence": q2_evidence},
         "q3": {"conclusion": q3_conc, "action": None, "evidence": q3_evidence},

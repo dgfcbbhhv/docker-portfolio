@@ -39,11 +39,18 @@ def render(tab, df=None, layer_summaries=None):
             verdict_label = {"可加仓": "🟢可加仓", "暂停": "🟡暂停", "持有": "⚪持有", "停止加仓": "🔴停止加仓"}
             entry_rows = []
             for e in plan["entries"]:
+                ladder_txt = ""
+                if e.get("add_step"):
+                    ladder_txt = f"第{e['add_step']}层 +{e.get('add_pct', 0)}%"
+                    alloc = e.get("ladder_alloc") or []
+                    if alloc:
+                        ladder_txt += f"（{'>'.join(f'+{a}' for a in alloc)}）"
                 entry_rows.append({
                     "代码": e["code"], "名称": e["name"], "当前%": e["current_ratio"],
                     "目标%": e["target_ratio"], "可加%": e["gap_ratio"],
                     "评分": e["lishing"], "股息率%": e["dy"], "档位": e["tier"],
-                    "结论": verdict_label.get(e["verdict"], e["verdict"]), "原因": e["reasons"], "分红": e["div_reinvest"],
+                    "结论": verdict_label.get(e["verdict"], e["verdict"]), "金字塔": ladder_txt,
+                    "原因": e["reasons"], "分红": e["div_reinvest"],
                 })
             st.dataframe(pd.DataFrame(entry_rows), width="stretch", hide_index=True)
 
