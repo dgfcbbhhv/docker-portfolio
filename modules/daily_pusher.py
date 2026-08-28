@@ -25,9 +25,13 @@ if _ROOT not in sys.path:
 logger = logging.getLogger("daily_pusher")
 
 from modules.alerts import AlertSender
-from modules.config import ALERT_CHANNELS
-from modules.daily_picks import build_picks, compose_message
+from modules.config import ALERT_CHANNELS, WATCH_LIST
+from modules.daily_picks import build_picks, compose_message, _market_for_code
 from modules.data.freshness import freshness_issues
+
+# 数据覆盖闸门：源失败导致大量标的取不到价时, 显式降级而非静默推送
+COVERAGE_WARN = float(os.environ.get("COVERAGE_WARN", "0.9"))   # 低于则正文加警示横幅
+COVERAGE_HARD = float(os.environ.get("COVERAGE_HARD", "0.5"))   # 低于则降级为"数据异常"提醒
 
 DATA_DIR = os.path.join(_ROOT, "data")
 CAL_PATH = os.path.join(DATA_DIR, "trading_calendar.json")
@@ -128,6 +132,29 @@ def _freshness_ok():
         return False
 
 
+def _universe_size(market):
+    """观察池中属于该市场范围的标的数量。"""
+    if not WATCH_LIST:
+        return 0
+    if market == "US":
+        return sum(1 for c in WATCH_LIST if _market_for_code(c) == "US")
+    return sum(1 for c in WATCH_LIST if _market_for_code(c) in ("A", "HK"))
+
+
+def _coverage_note(market, skipped_n):
+    """返回 (覆盖率, 警示文案|None)。覆盖率=取得有效行情的标的数/观察池。"""
+    total = _universe_size(market)
+    if total <= 0:
+        return 1.0, None
+    evaluated = total - skipped_n
+    cov = evaluated / total
+    note = None
+    if skipped_n > 0:
+        note = ("⚠️ 数据覆盖提示：本次 %d/%d 只标的取得有效行情，%d 只因数据源不可用被跳过，"
+                "结果可能不全面，请以界面数据为准。" % (evaluated, total, skipped_n))
+    return cov, note
+
+
 def build_and_send(market="AH", dry_run=False, day=None, skip_trading_check=False):
     """生成并推送(或仅 dry-run)。返回 (sent_ok, message)。
 
@@ -166,7 +193,22 @@ def build_and_send(market="AH", dry_run=False, day=None, skip_trading_check=Fals
         result["picks"] = [p for p in result.get("picks", []) if p["market"] in ("A", "HK")]
     result["date"] = today_s
 
-    msg = compose_message(result, market=market)
+    # —— 数据覆盖闸门: 源失败导致大量标的无价时, 显式降级而非静默推送 ——
+    skipped_n = len(result.get("skipped", []))
+    cov, note = _coverage_note(market, skipped_n)
+    logger.info("数据覆盖率 %s: %.1f%% (跳过 %d)", market, cov * 100, skipped_n)
+    if cov < COVERAGE_HARD:
+        msg = ("【数据异常】今日 %s 行情覆盖率仅 %.0f%%（%d 只因数据源失败被跳过），"
+               "选股不可靠，请先到界面刷新数据后再查看。" % (market, cov * 100, skipped_n))
+        if not dry_run and not _already_pushed(market, today_s, "warn"):
+            AlertSender().send_multi("选股推送-数据异常", msg, channels=ALERT_CHANNELS,
+                meta={"kind": "daily_picks", "market": market, "date": today_s,
+                      "coverage": round(cov, 3)})
+            _mark_pushed(market, today_s, "warn")
+        logger.warning("数据覆盖率过低, 选股推送降级为提醒")
+        return True, msg
+
+    msg = compose_message(result, market=market, data_note=note)
     if not msg:
         logger.info("%s 今日无符合条件标的", market)
         return False, None

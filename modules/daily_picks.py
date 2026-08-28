@@ -446,7 +446,7 @@ def _footer():
             "反过来想，总是反过来想。")
 
 
-def compose_message(picks_result, market="AH"):
+def compose_message(picks_result, market="AH", data_note=None):
     """把 picks_result 渲染成推送文案。每只标的给出明确操作建议。"""
     picks = picks_result.get("picks", [])
     if not picks:
@@ -455,6 +455,9 @@ def compose_message(picks_result, market="AH"):
     lines = [f"{head}今日持仓+候选池体检",
              f"日期: {picks_result.get('date')}",
              "", _preamble(), ""]
+    if data_note:
+        lines.append(data_note)
+        lines.append("")
     for p in picks:
         label = ACTION_LABEL.get(p["category"], p["category"])
         lines.append(f"{p['code']} {p['name']}：{label}")
