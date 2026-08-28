@@ -10,6 +10,11 @@ import os
 
 import requests
 
+try:
+    from modules import realtime as _rt
+except Exception:
+    _rt = None
+
 logger = logging.getLogger(__name__)
 
 _DEEPSEEK_URL = "https://api.deepseek.com/v1/chat/completions"
@@ -21,7 +26,7 @@ def _api_key():
     return os.environ.get("DEEPSEEK_API_KEY") or os.environ.get("DEEPSEEK_KEY")
 
 
-def build_prompt(name, row):
+def build_prompt(name, row, rt=None):
     ctx = (
         f"股票 {row.get('code')} {name} 当前指标：\n"
         f"股价 {row.get('price')}，市盈率 {row.get('pe')}，市净率 {row.get('pb')}，\n"
@@ -29,12 +34,25 @@ def build_prompt(name, row):
         f"ROE {row.get('roe')}%，年化波动率 {row.get('vol')}%，市值 {row.get('mcap')}亿，\n"
         f"盈利同比 {row.get('earn_np_yoy')}，评分标记 {row.get('lishing_flags')}。"
     )
+    if rt and not rt.get("error"):
+        cap = rt.get("capital") or {}
+        ind = rt.get("indicators") or {}
+        main_wan = round((rt.get("main_net") or 0) / 1e4, 1)
+        small_wan = round((cap.get("small_net") or 0) / 1e4, 1)
+        ctx += (
+            f"\n实时盘面（通达信直连）：现价 {rt.get('price')}（日内 {rt.get('pct')}%）"
+            f"，换手率 {rt.get('turnover')}%，量比 {rt.get('vol_ratio')}，涨速 {rt.get('speed_pct')}%；\n"
+            f"主力资金：净流入 {main_wan} 万元（散户净 {'流入' if small_wan >= 0 else '流出'} {abs(small_wan)} 万）；\n"
+            f"技术指标：MACD(DIF/DEA/HIST)={ind.get('macd_dif')}/{ind.get('macd_dea')}/{ind.get('macd_hist')}"
+            f"，KDJ(K/D/J)={ind.get('kdj_k')}/{ind.get('kdj_d')}/{ind.get('kdj_j')}"
+            f"，RSI={ind.get('rsi')}，乖离率BIAS={ind.get('bias')}%。"
+        )
     prompt = (
         ctx + "\n\n请从以下四个维度，用中文、每条 2-3 句、务实可操作地分析该红利股：\n"
-        "1. 技术面：趋势 / 支撑压力 / 量价\n"
+        "1. 技术面：结合上述实时 MACD/KDJ/RSI/乖离率与趋势、支撑压力、量价，判断当前位置\n"
         "2. 基本面：分红持续性 / 护城河 / 行业位置\n"
         "3. 财务面：ROE / 负债 / 现金流质量与风险点\n"
-        "4. 消息面：近期需关注的公告 / 事件 / 政策风险\n"
+        "4. 资金面：结合上述主力/散户实时净流入，判断资金态度与持续性\n"
         "最后给一句结论：当前是否适合按 Kelly 仓位建 / 加仓，理由一句话。"
     )
     return prompt
@@ -46,7 +64,7 @@ def analyze(name, row, model=None):
         logger.warning("[ai_analysis] DEEPSEEK_API_KEY 未配置，跳过")
         return None
     model = model or os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")
-    prompt = build_prompt(name, row)
+    prompt = build_prompt(name, row, rt=row.get("_rt"))
     try:
         resp = requests.post(
             _DEEPSEEK_URL,
@@ -76,6 +94,11 @@ def ai_review_candidates(payload=None, top_n=5, worker=None):
         return None
     blocks = [f"# AI 四维复盘 {datetime.datetime.now().strftime('%Y-%m-%d')}\n"]
     for c in cands:
+        if _rt is not None:
+            try:
+                c["_rt"] = _rt.get_realtime_profile(c["code"], with_indicators=True)
+            except Exception as e:
+                logger.warning("[ai_analysis] realtime %s 失败: %s", c.get("code"), e)
         text = analyze(c["name"], c)
         blocks.append(
             f"## {c['code']} {c['name']}\n\n{c.get('reason', '')}\n\n"

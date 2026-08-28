@@ -22,6 +22,11 @@ from modules.config import SCREENER, WATCH_LIST
 from modules.market_universe import bulk_a_spot
 from modules.portfolio_engine import build_portfolio_df
 
+try:
+    from modules import realtime as _rt
+except Exception:
+    _rt = None
+
 logger = logging.getLogger(__name__)
 
 _DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
@@ -184,7 +189,7 @@ def scan_dividend_candidates():
         qual = qual.sort_values("score", ascending=False).head(int(cfg.get("top_n", 30)))
         candidates = []
         for _, r in qual.iterrows():
-            candidates.append({
+            cd = {
                 "code": r["code"], "name": r["name"],
                 "price": round(float(r["price"]), 2) if pd.notna(r["price"]) else None,
                 "dy": round(float(r["dy"]), 2),
@@ -196,7 +201,21 @@ def scan_dividend_candidates():
                 "vol": round(float(r["vol"]), 1),
                 "roe": None if pd.isna(r["roe"]) else round(float(r["roe"]), 1),
                 "reason": _reason(r),
-            })
+            }
+            if _rt is not None:
+                try:
+                    prof = _rt.get_realtime_profile(r["code"], with_indicators=False)
+                    if not prof.get("error"):
+                        cap = prof.get("capital") or {}
+                        cd["rt_price"] = prof.get("price")
+                        cd["rt_pct"] = prof.get("pct")
+                        cd["rt_turnover"] = prof.get("turnover")
+                        cd["rt_vol_ratio"] = prof.get("vol_ratio")
+                        cd["rt_main_net_wan"] = round((prof.get("main_net") or 0) / 1e4, 1)
+                        cd["rt_small_net_wan"] = round((cap.get("small_net") or 0) / 1e4, 1)
+                except Exception as e:
+                    logger.warning("[dividend_screener] realtime %s 失败: %s", r["code"], e)
+            candidates.append(cd)
 
     payload = {
         "generated_at": datetime.datetime.now().isoformat(timespec="seconds"),

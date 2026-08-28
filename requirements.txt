@@ -11,3 +11,4 @@ longbridge>=4.4.0
 openpyxl>=3.1.0
 pyarrow>=15.0.0
 streamlit-echarts>=0.4.0
+easy_tdx>=1.17.0
