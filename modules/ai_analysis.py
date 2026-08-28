@@ -26,6 +26,31 @@ def _api_key():
     return os.environ.get("DEEPSEEK_API_KEY") or os.environ.get("DEEPSEEK_KEY")
 
 
+def _summarize_announcements(ann_list, n=30):
+    recent = (ann_list or [])[:n]
+    cats = {
+        "分红": ["分红", "派息", "利润分配", "送转", "派发"],
+        "业绩": ["业绩", "季报", "半年", "年报", "预告", "经营"],
+        "增减持": ["减持", "增持", "回购"],
+        "风险": ["违规", "处罚", "警示", "停牌", "风险", "立案", "问询"],
+    }
+    cnt = {k: 0 for k in cats}
+    hits = []
+    for a in recent:
+        t = a.get("title", "")
+        for cat, kws in cats.items():
+            if any(k in t for k in kws):
+                cnt[cat] += 1
+        if any(k in t for k in ["分红", "派息", "利润分配", "减持", "增持", "违规", "处罚",
+                                "警示", "停牌", "风险提示", "业绩预告", "年报", "半年报"]):
+            hits.append(f"{a.get('date', '')} {t}")
+    parts = [f"{k}{v}条" for k, v in cnt.items() if v]
+    summary = f"近{n}日公告: " + (", ".join(parts) if parts else "无重点类")
+    if hits:
+        summary += "\n  重点: " + "; ".join(hits[:6])
+    return summary
+
+
 def build_prompt(name, row, rt=None):
     ctx = (
         f"股票 {row.get('code')} {name} 当前指标：\n"
@@ -43,16 +68,27 @@ def build_prompt(name, row, rt=None):
             f"\n实时盘面（通达信直连）：现价 {rt.get('price')}（日内 {rt.get('pct')}%）"
             f"，换手率 {rt.get('turnover')}%，量比 {rt.get('vol_ratio')}，涨速 {rt.get('speed_pct')}%；\n"
             f"主力资金：净流入 {main_wan} 万元（散户净 {'流入' if small_wan >= 0 else '流出'} {abs(small_wan)} 万）；\n"
-            f"技术指标：MACD(DIF/DEA/HIST)={ind.get('macd_dif')}/{ind.get('macd_dea')}/{ind.get('macd_hist')}"
-            f"，KDJ(K/D/J)={ind.get('kdj_k')}/{ind.get('kdj_d')}/{ind.get('kdj_j')}"
-            f"，RSI={ind.get('rsi')}，乖离率BIAS={ind.get('bias')}%。"
+            f"技术指标：MACD(DIF/DEA/HIST)={ind.get('MACD_DIF')}/{ind.get('MACD_DEA')}/{ind.get('MACD_HIST')}"
+            f"，KDJ(K/D/J)={ind.get('KDJ_K')}/{ind.get('KDJ_D')}/{ind.get('KDJ_J')}"
+            f"，RSI={ind.get('RSI')}，乖离率BIAS={ind.get('BIAS1')}%。"
         )
+        ann = rt.get("announcements")
+        if isinstance(ann, list) and ann:
+            ctx += "\n" + _summarize_announcements(ann)
+        sec = rt.get("sector")
+        if isinstance(sec, list) and sec:
+            top = "，".join(
+                f"{s.get('name')}(主力+{s.get('main_net_yi')}亿,涨{s.get('change_pct')}%)"
+                for s in sec[:5]
+            )
+            ctx += f"\n行业资金风向（主力净流入前5）: {top}。"
     prompt = (
-        ctx + "\n\n请从以下四个维度，用中文、每条 2-3 句、务实可操作地分析该红利股：\n"
+        ctx + "\n\n请从以下五个维度，用中文、每条 2-3 句、务实可操作地分析该红利股：\n"
         "1. 技术面：结合上述实时 MACD/KDJ/RSI/乖离率与趋势、支撑压力、量价，判断当前位置\n"
         "2. 基本面：分红持续性 / 护城河 / 行业位置\n"
         "3. 财务面：ROE / 负债 / 现金流质量与风险点\n"
-        "4. 资金面：结合上述主力/散户实时净流入，判断资金态度与持续性\n"
+        "4. 资金面：结合上述主力/散户实时净流入与行业资金风向，判断资金态度与持续性\n"
+        "5. 消息面：结合上述近期公告（分红/业绩/减持/违规），提示需关注的事件与风险\n"
         "最后给一句结论：当前是否适合按 Kelly 仓位建 / 加仓，理由一句话。"
     )
     return prompt
@@ -92,11 +128,20 @@ def ai_review_candidates(payload=None, top_n=5, worker=None):
     cands = (payload or {}).get("candidates", [])[: int(top_n)]
     if not cands:
         return None
+    sector = None
+    if _rt is not None:
+        try:
+            sector = _rt.get_sector_sentiment(5)
+        except Exception as e:
+            logger.warning("[ai_analysis] sector sentiment 失败: %s", e)
     blocks = [f"# AI 四维复盘 {datetime.datetime.now().strftime('%Y-%m-%d')}\n"]
     for c in cands:
         if _rt is not None:
             try:
-                c["_rt"] = _rt.get_realtime_profile(c["code"], with_indicators=True)
+                prof = _rt.get_realtime_profile(c["code"], with_indicators=True)
+                if isinstance(sector, list):
+                    prof["sector"] = sector
+                c["_rt"] = prof
             except Exception as e:
                 logger.warning("[ai_analysis] realtime %s 失败: %s", c.get("code"), e)
         text = analyze(c["name"], c)

@@ -204,7 +204,7 @@ def scan_dividend_candidates():
             }
             if _rt is not None:
                 try:
-                    prof = _rt.get_realtime_profile(r["code"], with_indicators=False)
+                    prof = _rt.get_realtime_profile(r["code"], with_indicators=False, with_announcements=False)
                     if not prof.get("error"):
                         cap = prof.get("capital") or {}
                         cd["rt_price"] = prof.get("price")

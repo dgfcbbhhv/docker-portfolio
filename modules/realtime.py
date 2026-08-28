@@ -143,36 +143,87 @@ def get_capital_flow(code):
         return {"error": str(e)}
 
 
-def get_indicators(code, count=200):
+_DEFAULT_INDS = ["MACD", "KDJ", "RSI", "BIAS", "DMI", "BOLL", "OBV"]
+
+
+def get_indicators(code, count=200, indicators=None):
     if not _HAVE_ETDX:
         return {"error": "easy_tdx 未安装"}
+    inds = indicators or _DEFAULT_INDS
     try:
         mkt, c = _market_of(code)
         bars = _get_client().get_stock_kline(mkt, c, KlineCategory.DAY, 0, count, adjust=Adjust.QFQ)
         if bars is None or len(bars) < 30:
             return {"error": "no bars"}
-        ind = indicator.compute_indicators(bars, ["MACD", "KDJ", "RSI", "BIAS"])
+        ind = indicator.compute_indicators(bars, inds)
         last = ind.iloc[-1]
-        return {
-            "macd_dif": round(float(last.get("MACD_DIF") or 0), 3),
-            "macd_dea": round(float(last.get("MACD_DEA") or 0), 3),
-            "macd_hist": round(float(last.get("MACD_HIST") or 0), 3),
-            "kdj_k": round(float(last.get("KDJ_K") or 0), 1),
-            "kdj_d": round(float(last.get("KDJ_D") or 0), 1),
-            "kdj_j": round(float(last.get("KDJ_J") or 0), 1),
-            "rsi": round(float(last.get("RSI") or 0), 1),
-            "bias": round(float(last.get("BIAS1") or 0), 2),
-        }
+        out = {}
+        for col in ind.columns:
+            if col in bars.columns:
+                continue
+            try:
+                out[col] = round(float(last[col]), 3)
+            except (TypeError, ValueError):
+                pass
+        return out
     except Exception as e:
         logger.warning("[realtime] indicators %s 失败: %s", code, e)
         return {"error": str(e)}
 
 
-def get_realtime_profile(code, with_indicators=True):
+def get_announcements(code, count=15):
+    """近期公告（巨潮资讯独立数据源，不依赖通达信行情服务器）。"""
+    if not _HAVE_ETDX:
+        return {"error": "easy_tdx 未安装"}
+    try:
+        from easy_tdx.cninfo import CninfoClient
+        df = CninfoClient().get_announcements(str(code), count=count)
+        if df is None or len(df) == 0:
+            return []
+        out = []
+        for _, r in df.iterrows():
+            out.append({
+                "date": str(r.get("date") or ""),
+                "title": str(r.get("title") or ""),
+                "type": str(r.get("type") or ""),
+                "url": str(r.get("url") or ""),
+            })
+        return out
+    except Exception as e:
+        logger.warning("[realtime] announcements %s 失败: %s", code, e)
+        return {"error": str(e)}
+
+
+def get_sector_sentiment(top_n=5):
+    """行业板块资金风向（按主力净流入排行）。"""
+    if not _HAVE_ETDX:
+        return {"error": "easy_tdx 未安装"}
+    try:
+        from easy_tdx import BoardType
+        r = _get_client().get_board_ranking(BoardType.HY, top_n=top_n, sort_by="main_net_amount")
+        out = []
+        for _, row in r.iterrows():
+            out.append({
+                "name": row.get("name"),
+                "main_net_yi": round((row.get("main_net_amount") or 0) / 1e8, 1),
+                "change_pct": round(float(row.get("change_pct") or 0), 2),
+                "up": int(row.get("up_count") or 0),
+                "down": int(row.get("down_count") or 0),
+                "members": int(row.get("member_count") or 0),
+            })
+        return out
+    except Exception as e:
+        logger.warning("[realtime] sector ranking 失败: %s", e)
+        return {"error": str(e)}
+
+
+def get_realtime_profile(code, with_indicators=True, with_announcements=True):
     prof = dict(get_quote(code))
     prof["capital"] = get_capital_flow(code)
     if with_indicators:
         prof["indicators"] = get_indicators(code)
+    if with_announcements:
+        prof["announcements"] = get_announcements(code)
     return prof
 
 
