@@ -446,6 +446,27 @@ def _footer():
             "反过来想，总是反过来想。")
 
 
+def _held_weight_map():
+    """真实持仓权重表 {code: (实仓权重%, 目标仓位%)}，供推送文案标注。
+    失败优雅降级为 {}，不阻断主流程。"""
+    try:
+        from modules.portfolio_engine import build_portfolio_df
+        df, _ = build_portfolio_df()
+        if df is None or df.empty:
+            return {}
+        out = {}
+        for _, r in df.iterrows():
+            code = str(r.get("code"))
+            w = r.get("weight")
+            rt = r.get("ratio")
+            out[code] = (float(w) if w is not None else None,
+                         float(rt) if rt is not None else None)
+        return out
+    except Exception as e:
+        logger.warning("[daily_picks] 持仓权重表获取失败: %s", e)
+        return {}
+
+
 def compose_message(picks_result, market="AH", data_note=None):
     """把 picks_result 渲染成推送文案。每只标的给出明确操作建议。"""
     picks = picks_result.get("picks", [])
@@ -458,9 +479,22 @@ def compose_message(picks_result, market="AH", data_note=None):
     if data_note:
         lines.append(data_note)
         lines.append("")
+    held_map = _held_weight_map()
     for p in picks:
         label = ACTION_LABEL.get(p["category"], p["category"])
         lines.append(f"{p['code']} {p['name']}：{label}")
+        hw = held_map.get(p["code"])
+        if hw:
+            w, r = hw
+            seg = []
+            if w is not None:
+                seg.append(f"实仓 {w:.1f}%")
+            if r is not None:
+                seg.append(f"目标 {r:.0f}%")
+            if p.get("kelly_final") is not None:
+                seg.append(f"Kelly 建议 {p['kelly_final']:.1f}%")
+            if seg:
+                lines.append("  · 已在持仓：" + " / ".join(seg))
         lines.append("理由:")
         lines.extend(p["lines"])
         lines.append("")
