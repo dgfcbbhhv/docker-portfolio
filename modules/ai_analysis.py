@@ -48,7 +48,52 @@ def _summarize_announcements(ann_list, n=30):
     return f"近期公告清单（共{len(lines)}条，均来自交易所公开披露）:\n" + "\n".join(lines)
 
 
-def build_prompt(name, row, rt=None):
+def _portfolio_context():
+    """构建『真实持仓与组合构成』文本块, 供 AI 结合上下文(封闭视野缺陷 #4)。
+
+    返回 (text_block_or_None, held_weight_map)。失败优雅降级为 (None, {})。
+    """
+    try:
+        from modules.portfolio_engine import build_portfolio_df
+        df, _ = build_portfolio_df()
+    except Exception as e:
+        logger.warning("[ai_analysis] 持仓上下文获取失败: %s", e)
+        return None, {}
+    if df is None or df.empty:
+        return None, {}
+    held = {}
+    lines = ["【我的真实持仓与组合构成】（仅供结合上下文，勿外传）:"]
+    by_group = {}
+    for _, r in df.iterrows():
+        code = str(r.get("code"))
+        name = r.get("name", code)
+        weight = r.get("weight")
+        ratio = r.get("ratio")
+        grp = r.get("group", "") or ""
+        if weight is not None:
+            try:
+                held[code] = float(weight)
+            except (TypeError, ValueError):
+                pass
+            by_group.setdefault(grp, 0.0)
+            by_group[grp] += float(weight)
+        seg = [f"{code} {name}"]
+        if grp:
+            seg.append(f"[{grp}]")
+        if ratio is not None:
+            seg.append(f"目标{ratio}%")
+        if weight is not None:
+            seg.append(f"实仓{float(weight):.1f}%")
+        seg.append(f"价{r.get('price')} PE{r.get('pe')} PB{r.get('pb')} 股息{r.get('dy')}% "
+                   f"ROE{r.get('roe')}% 负债{r.get('debt')}%")
+        lines.append("  - " + " ".join(str(x) for x in seg))
+    if by_group:
+        alloc = "，".join(f"{g}:{v:.1f}%" for g, v in by_group.items() if v)
+        lines.append(f"组合权重分布: {alloc}")
+    return "\n".join(lines), held
+
+
+def build_prompt(name, row, rt=None, portfolio_ctx=None, held_info=None):
     ctx = (
         f"股票 {row.get('code')} {name} 当前指标：\n"
         f"股价 {row.get('price')}，市盈率 {row.get('pe')}，市净率 {row.get('pb')}，\n"
@@ -79,8 +124,13 @@ def build_prompt(name, row, rt=None):
                 for s in sec[:5]
             )
             ctx += f"\n行业资金风向（主力净流入前5）: {top}。"
+    extra = ""
+    if portfolio_ctx:
+        extra += portfolio_ctx + "\n\n"
+    if held_info:
+        extra += f"【该标的与我的持仓关系】{held_info}\n\n"
     prompt = (
-        ctx + "\n\n请从以下五个维度，用中文、每条 2-3 句、务实可操作地分析该红利股：\n"
+        extra + ctx + "\n\n请从以下五个维度，用中文、每条 2-3 句、务实可操作地分析该红利股：\n"
         "1. 技术面：结合上述实时 MACD/KDJ/RSI/乖离率与趋势、支撑压力、量价，判断当前位置\n"
         "2. 基本面：分红持续性 / 护城河 / 行业位置\n"
         "3. 财务面：ROE / 负债 / 现金流质量与风险点\n"
@@ -97,13 +147,14 @@ def build_prompt(name, row, rt=None):
     return prompt
 
 
-def analyze(name, row, model=None):
+def analyze(name, row, model=None, portfolio_ctx=None, held_info=None):
     key = _api_key()
     if not key:
         logger.warning("[ai_analysis] DEEPSEEK_API_KEY 未配置，跳过")
         return None
     model = model or os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")
-    prompt = build_prompt(name, row, rt=row.get("_rt"))
+    prompt = build_prompt(name, row, rt=row.get("_rt"),
+                          portfolio_ctx=portfolio_ctx, held_info=held_info)
     try:
         resp = requests.post(
             _DEEPSEEK_URL,
@@ -137,6 +188,7 @@ def ai_review_candidates(payload=None, top_n=5, worker=None):
             sector = _rt.get_sector_sentiment(5)
         except Exception as e:
             logger.warning("[ai_analysis] sector sentiment 失败: %s", e)
+    pctx, held_map = _portfolio_context()
     blocks = [f"# AI 四维复盘 {datetime.datetime.now().strftime('%Y-%m-%d')}\n"]
     for c in cands:
         if _rt is not None:
@@ -147,7 +199,12 @@ def ai_review_candidates(payload=None, top_n=5, worker=None):
                 c["_rt"] = prof
             except Exception as e:
                 logger.warning("[ai_analysis] realtime %s 失败: %s", c.get("code"), e)
-        text = analyze(c["name"], c)
+        held_code = str(c.get("code"))
+        held_info = None
+        if held_code in held_map:
+            held_info = (f"该标的已在我的持仓中，当前实仓权重约 {held_map[held_code]:.1f}%，"
+                         f"属组合一部分；分析加/减仓时请结合整体仓位与行业集中度。")
+        text = analyze(c["name"], c, portfolio_ctx=pctx, held_info=held_info)
         blocks.append(
             f"## {c['code']} {c['name']}\n\n{c.get('reason', '')}\n\n"
             + (text or "_（未配置 DEEPSEEK_API_KEY 或调用失败）_")
