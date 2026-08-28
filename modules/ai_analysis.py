@@ -51,45 +51,48 @@ def _summarize_announcements(ann_list, n=30):
 def _portfolio_context():
     """构建『真实持仓与组合构成』文本块, 供 AI 结合上下文(封闭视野缺陷 #4)。
 
-    返回 (text_block_or_None, held_weight_map)。失败优雅降级为 (None, {})。
+    真实持仓以 broker_trades.json(真实成交) 为权威源(get_real_holdings_view),
+    而非看板目标仓位。返回 (text_block_or_None, held_weight_map)。
     """
     try:
-        from modules.portfolio_engine import build_portfolio_df
-        df, _ = build_portfolio_df()
+        from modules.daily_picks import get_real_holdings_view
+        view = get_real_holdings_view()
     except Exception as e:
         logger.warning("[ai_analysis] 持仓上下文获取失败: %s", e)
         return None, {}
-    if df is None or df.empty:
+    if not view:
         return None, {}
     held = {}
-    lines = ["【我的真实持仓与组合构成】（仅供结合上下文，勿外传）:"]
+    lines = ["【我的真实持仓与组合构成（真实成交口径，仅供结合上下文，勿外传）】:"]
     by_group = {}
-    for _, r in df.iterrows():
-        code = str(r.get("code"))
-        name = r.get("name", code)
-        weight = r.get("weight")
-        ratio = r.get("ratio")
-        grp = r.get("group", "") or ""
-        if weight is not None:
+    for h in view:
+        code = str(h.get("code"))
+        name = h.get("name", code)
+        rw = h.get("real_weight")
+        target = h.get("target")
+        grp = h.get("group", "") or ""
+        if rw is not None:
             try:
-                held[code] = float(weight)
+                held[code] = float(rw)
             except (TypeError, ValueError):
                 pass
             by_group.setdefault(grp, 0.0)
-            by_group[grp] += float(weight)
+            by_group[grp] += float(rw)
         seg = [f"{code} {name}"]
         if grp:
             seg.append(f"[{grp}]")
-        if ratio is not None:
-            seg.append(f"目标{ratio}%")
-        if weight is not None:
-            seg.append(f"实仓{float(weight):.1f}%")
-        seg.append(f"价{r.get('price')} PE{r.get('pe')} PB{r.get('pb')} 股息{r.get('dy')}% "
-                   f"ROE{r.get('roe')}% 负债{r.get('debt')}%")
+        if target is not None:
+            seg.append(f"目标{target}%")
+        if rw is not None:
+            seg.append(f"真实占比{rw:.1f}%")
+        if h.get("shares") is not None:
+            seg.append(f"{h['shares']}股")
+        seg.append(f"价{h.get('price')} PE{h.get('pe')} PB{h.get('pb')} 股息{h.get('dy')}% "
+                   f"ROE{h.get('roe')}% 负债{h.get('debt')}%")
         lines.append("  - " + " ".join(str(x) for x in seg))
     if by_group:
         alloc = "，".join(f"{g}:{v:.1f}%" for g, v in by_group.items() if v)
-        lines.append(f"组合权重分布: {alloc}")
+        lines.append(f"组合权重分布(真实): {alloc}")
     return "\n".join(lines), held
 
 

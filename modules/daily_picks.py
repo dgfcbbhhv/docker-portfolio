@@ -446,25 +446,66 @@ def _footer():
             "反过来想，总是反过来想。")
 
 
-def _held_weight_map():
-    """真实持仓权重表 {code: (实仓权重%, 目标仓位%)}，供推送文案标注。
-    失败优雅降级为 {}，不阻断主流程。"""
+def get_real_holdings_view():
+    """真实持仓视图：以 broker_trades.json(真实成交) 为权威源，合并看板目标与
+    实时基本面，按 股数×现价/总市值 计算真实占比。失败降级为 []。"""
     try:
+        from modules.actual_holdings import get_actual_positions
+        actual = get_actual_positions() or {}
+        actual = {c: v for c, v in actual.items() if (v.get("shares") or 0) > 0}
+        if not actual:
+            return []
         from modules.portfolio_engine import build_portfolio_df
         df, _ = build_portfolio_df()
-        if df is None or df.empty:
-            return {}
-        out = {}
-        for _, r in df.iterrows():
-            code = str(r.get("code"))
-            w = r.get("weight")
-            rt = r.get("ratio")
-            out[code] = (float(w) if w is not None else None,
-                         float(rt) if rt is not None else None)
+        fmap = {}
+        if df is not None and not df.empty:
+            for _, r in df.iterrows():
+                fmap[str(r.get("code"))] = r
+        mvs, total = {}, 0.0
+        for code, v in actual.items():
+            r = fmap.get(code)  # Series 或 None, 禁止对 Series 用 or/if
+            price = r.get("price") if r is not None else None
+            px_src = price if price is not None else v.get("avg_cost")
+            try:
+                px = float(px_src or 0)
+            except (TypeError, ValueError):
+                px = 0.0
+            if px <= 0:
+                continue
+            mv = float(v["shares"]) * px
+            mvs[code] = mv
+            total += mv
+        out = []
+        for code, v in actual.items():
+            r = fmap.get(code)
+            w = (mvs.get(code, 0) / total * 100) if (total > 0 and code in mvs) else None
+            out.append({
+                "code": code,
+                "name": (r.get("name") if r is not None else None) or code,
+                "group": (r.get("group") if r is not None else None) or "",
+                "target": (r.get("ratio") if r is not None else None),
+                "real_weight": w,
+                "shares": v.get("shares"),
+                "price": (r.get("price") if r is not None else None),
+                "pe": (r.get("pe") if r is not None else None),
+                "pb": (r.get("pb") if r is not None else None),
+                "dy": (r.get("dy") if r is not None else None),
+                "roe": (r.get("roe") if r is not None else None),
+                "debt": (r.get("debt") if r is not None else None),
+            })
+        out.sort(key=lambda x: (x.get("real_weight") or 0), reverse=True)
         return out
     except Exception as e:
-        logger.warning("[daily_picks] 持仓权重表获取失败: %s", e)
-        return {}
+        logger.warning("[daily_picks] 真实持仓视图获取失败: %s", e)
+        return []
+
+
+def _real_holdings_map():
+    """供推送标注用的 {code: {target, real_weight, shares}}。"""
+    return {h["code"]: {"target": h.get("target"),
+                        "real_weight": h.get("real_weight"),
+                        "shares": h.get("shares")}
+            for h in get_real_holdings_view()}
 
 
 def compose_message(picks_result, market="AH", data_note=None):
@@ -479,22 +520,23 @@ def compose_message(picks_result, market="AH", data_note=None):
     if data_note:
         lines.append(data_note)
         lines.append("")
-    held_map = _held_weight_map()
+    held_map = _real_holdings_map()
     for p in picks:
         label = ACTION_LABEL.get(p["category"], p["category"])
         lines.append(f"{p['code']} {p['name']}：{label}")
-        hw = held_map.get(p["code"])
-        if hw:
-            w, r = hw
+        rh = held_map.get(p["code"])
+        if rh:
             seg = []
-            if w is not None:
-                seg.append(f"实仓 {w:.1f}%")
-            if r is not None:
-                seg.append(f"目标 {r:.0f}%")
+            if rh.get("real_weight") is not None:
+                seg.append(f"真实占比 {rh['real_weight']:.1f}%")
+            if rh.get("shares") is not None:
+                seg.append(f"{rh['shares']}股")
+            if rh.get("target") is not None:
+                seg.append(f"目标 {rh['target']:.0f}%")
             if p.get("kelly_final") is not None:
-                seg.append(f"Kelly 建议 {p['kelly_final']:.1f}%")
+                seg.append(f"Kelly {p['kelly_final']:.1f}%")
             if seg:
-                lines.append("  · 已在持仓：" + " / ".join(seg))
+                lines.append("  · 已在持仓(真实)：" + " / ".join(seg))
         lines.append("理由:")
         lines.extend(p["lines"])
         lines.append("")
