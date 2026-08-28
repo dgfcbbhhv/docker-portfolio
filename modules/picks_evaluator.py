@@ -33,6 +33,10 @@ _SNAPSHOT_PATH = os.path.join(_DATA_DIR, "paper", "signal_snapshots.json")
 
 _ACTIONABLE = ("可建仓", "可加仓", "减仓")
 
+# 账本 schema 版本: 自本次修复(标签降级/真实持仓改取broker_trades/特征字段)起记为 v2。
+# calibrate/回测只认 >= 此版本的记录, 旧备份即使恢复也不会静默污染新分析。
+SCHEMA_VERSION = 2
+
 _DEFAULT_HORIZONS = (5, 10, 20, 60)
 
 
@@ -122,6 +126,7 @@ def record_picks(picks_result, signal_date=None):
                 "decision": decision,
                 "pick_id": pick_id,
                 "recorded_at": datetime.datetime.now().isoformat(),
+                "schema_version": SCHEMA_VERSION,
                 # 特征向量（供 calibrate 反事实扫描；缺则留空）
                 "lishing_total": p.get("lishing"),
                 "mos": p.get("mos"),
@@ -130,6 +135,8 @@ def record_picks(picks_result, signal_date=None):
                 "roe": p.get("roe"),
                 "dy": p.get("dy"),
             }
+            if decision == "push" and rec.get("lishing_total") is None and rec.get("pe") is None:
+                logger.warning("[PicksEval] 记录缺特征字段(可能污染校准): %s", pick_id)
             if decision == "blocked":
                 rec["lishing"] = p.get("lishing")
                 rec["flags"] = p.get("flags")

@@ -16,6 +16,9 @@ from collections import defaultdict
 
 from modules import picks_evaluator as PE
 
+# 只认 v2 及以上记录(本次修复后), 旧备份即使恢复也不污染扫描
+SCHEMA_VERSION = PE.SCHEMA_VERSION
+
 logger = logging.getLogger(__name__)
 
 _DATA_DIR = PE._DATA_DIR
@@ -108,8 +111,14 @@ def run():
     feat_recs = [
         r for r in recs
         if r.get("category") == "可建仓" and r.get("decision") == "push"
+        and r.get("schema_version") == SCHEMA_VERSION
         and r.get("lishing_total") is not None
     ]
+    legacy = sum(
+        1 for r in recs
+        if r.get("category") == "可建仓" and r.get("decision") == "push"
+        and r.get("schema_version") != SCHEMA_VERSION
+    )
     bench_cache = {}
     # 预计算每条记录收益
     for r in feat_recs:
@@ -144,14 +153,19 @@ def run():
         "date": report_date,
         "baseline": baseline,
         "feature_records": len(feat_recs),
+        "legacy_records": legacy,
         "counterfactual": {
             "horizon": _HORIZON,
             "best": best,
             "all": sweep,
         },
-        "note": ("反事实扫描基于带特征的历史可建仓记录；建议采纳 best 组合并观察"
-                 "后续胜率是否稳定，再决定是否写入参数。") if best else
-                "带特征的可建仓记录不足，暂无法扫描；后续账本累积后自动可用。",
+        "note": (f"反事实扫描仅用 v{SCHEMA_VERSION} 记录({len(feat_recs)}条)"
+                 + (f"；已排除旧版本 {legacy} 条" if legacy else "")
+                 + "；建议采纳 best 组合并观察后续胜率是否稳定，再决定是否写入参数。")
+                if best else
+                (f"带特征的可建仓记录不足(当前 v{SCHEMA_VERSION} {len(feat_recs)}条"
+                 + (f"，另有旧版本 {legacy} 条已排除" if legacy else "")
+                 + ")，暂无法扫描；后续账本累积后自动可用。"),
     }
     _save(result, report_date)
     return result
