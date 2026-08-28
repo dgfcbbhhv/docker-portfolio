@@ -44,6 +44,7 @@ from modules.config import SCREENER, DEVIATION, AI_REVIEW
 from modules.dividend_screener import run_dividend_scan
 from modules.deviation import run_deviation_check
 from modules.ai_analysis import run_ai_review
+from modules.calibrate import run as run_calibration
 
 DATA_DIR = os.path.join(_ROOT, "data")
 STATE_PATH = os.path.join(DATA_DIR, "alert_worker_state.json")
@@ -568,6 +569,18 @@ class AlertWorker:
         except Exception as e:
             logger.exception("pipeline health check failed: %s", e)
 
+    def _quarterly_calibration(self):
+        """季度初(1/4/7/10 月 1 日)触发参数演进与自评估(report-only)。"""
+        try:
+            today = datetime.date.today()
+            if today.month in (1, 4, 7, 10) and today.day == 1:
+                logger.info("[Calibrate] 季度初触发参数演进/自评估")
+                run_calibration()
+            else:
+                logger.debug("[Calibrate] 非季度初, 跳过")
+        except Exception as e:
+            logger.warning("[Calibrate] 自评估失败: %s", e)
+
     def run_forever(self):
         from modules.config import CROSSCHECK, DAILY_PUSH, REIT_MONITOR
         scheduler = Scheduler()
@@ -604,6 +617,8 @@ class AlertWorker:
         if AI_REVIEW.get("enabled"):
             scheduler.add_daily_task("ai_review", lambda: run_ai_review(self),
                                      AI_REVIEW.get("time", "19:00"))
+        scheduler.add_daily_task("quarterly_calibration",
+                                 self._quarterly_calibration, "03:20")
         scheduler.start()
         logger.info("alert worker started")
         try:

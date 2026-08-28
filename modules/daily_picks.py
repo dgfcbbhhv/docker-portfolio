@@ -371,6 +371,12 @@ def build_picks(include_announcements=True):
             "market": market,
             "price": float(r.get("price", 0) or 0),
             "kelly_final": float(r.get("kelly_final", 0) or 0),
+            "lishing": float(r.get("lishing", 0) or 0),
+            "mos": r.get("mos"),
+            "pe": r.get("pe"),
+            "pb": r.get("pb"),
+            "roe": r.get("roe"),
+            "dy": r.get("dy"),
             "risk_flags": str(r.get("lishing_flags", "") or "").strip(),
             "lines": lines,
             "announcement": ann,
@@ -425,7 +431,7 @@ def classify_operation(row, held, holdings=None):
 
 # category -> 推送文案里的明确操作建议
 ACTION_LABEL = {
-    "可建仓": "建议建仓",
+    "可建仓": "观察候选（初筛，非买入建议）",
     "可加仓": "建议加仓",
     "减仓": "建议减仓",
     "可关注": "持有观察",

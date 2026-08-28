@@ -122,6 +122,13 @@ def record_picks(picks_result, signal_date=None):
                 "decision": decision,
                 "pick_id": pick_id,
                 "recorded_at": datetime.datetime.now().isoformat(),
+                # 特征向量（供 calibrate 反事实扫描；缺则留空）
+                "lishing_total": p.get("lishing"),
+                "mos": p.get("mos"),
+                "pe": p.get("pe"),
+                "pb": p.get("pb"),
+                "roe": p.get("roe"),
+                "dy": p.get("dy"),
             }
             if decision == "blocked":
                 rec["lishing"] = p.get("lishing")
