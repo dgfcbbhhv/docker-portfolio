@@ -20,6 +20,8 @@ x-alert-env: &alert-env
   LONGBRIDGE_REGION: ${LONGBRIDGE_REGION:-cn}
   LONGBRIDGE_TOKEN_REFRESHED: ${LONGBRIDGE_TOKEN_REFRESHED:-}
   FMP_API_KEY: ${FMP_API_KEY:-}
+  DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+  DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
 
 x-app-volumes: &app-volumes
   - ./data:/app/data
@@ -35,9 +37,6 @@ services:
     container_name: dividend-portfolio
     network_mode: host
     restart: unless-stopped
-    dns:
-      - 223.5.5.5
-      - 119.29.29.29
     environment:
       <<: *alert-env
       MODE: portfolio
@@ -55,33 +54,13 @@ services:
     network_mode: host
     restart: unless-stopped
     dns:
-      - 223.5.5.5
-      - 119.29.29.29
+      - 192.168.1.1
     environment:
       <<: *alert-env
       MODE: alert-worker
     volumes: *app-volumes
     healthcheck:
       test: ["CMD", "python", "-c", "import json,os,time; p='data/worker_heartbeat.json'; assert os.path.exists(p); d=json.load(open(p)); assert time.time()-d['ts']<600"]
-      interval: 5m
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-
-  monitor:
-    build: .
-    container_name: dividend-monitor
-    network_mode: host
-    restart: unless-stopped
-    dns:
-      - 223.5.5.5
-      - 119.29.29.29
-    environment:
-      <<: *alert-env
-      MODE: monitor
-    volumes: *app-volumes
-    healthcheck:
-      test: ["CMD", "python", "-c", "import json,os,time; p='data/monitor_heartbeat.json'; assert os.path.exists(p); d=json.load(open(p)); assert time.time()-d['ts']<900"]
       interval: 5m
       timeout: 10s
       retries: 3

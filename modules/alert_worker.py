@@ -40,6 +40,10 @@ from modules.data.cache import active_keys, gc_orphans, gc_stale
 from modules.data.freshness import freshness_issues
 from modules.portfolio_engine import alert_snapshot, build_portfolio_df
 from modules.scheduler import Scheduler, is_trading_hours
+from modules.config import SCREENER, DEVIATION, AI_REVIEW
+from modules.dividend_screener import run_dividend_scan
+from modules.deviation import run_deviation_check
+from modules.ai_analysis import run_ai_review
 
 DATA_DIR = os.path.join(_ROOT, "data")
 STATE_PATH = os.path.join(DATA_DIR, "alert_worker_state.json")
@@ -591,6 +595,15 @@ class AlertWorker:
                                  DAILY_PUSH.get("time_validate", "18:00"))
         scheduler.add_daily_task("daily_health_check", self._daily_health_check,
                                  DAILY_PUSH.get("time_health", "18:10"))
+        if SCREENER.get("enabled"):
+            scheduler.add_daily_task("dividend_scan", lambda: run_dividend_scan(self),
+                                     SCREENER.get("time", "17:30"))
+        if DEVIATION.get("enabled"):
+            scheduler.add_daily_task("deviation_check", lambda: run_deviation_check(self),
+                                     DEVIATION.get("time", "18:30"))
+        if AI_REVIEW.get("enabled"):
+            scheduler.add_daily_task("ai_review", lambda: run_ai_review(self),
+                                     AI_REVIEW.get("time", "19:00"))
         scheduler.start()
         logger.info("alert worker started")
         try:

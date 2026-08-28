@@ -342,22 +342,34 @@ def build_portfolio_df(cfg=None, portfolio_map=None):
 
     ca = list(PORT_A.keys())
     chk = list(PORT_HK.keys())
+    us_codes = list(PORT_US.keys())
     rows = []
     meta = {}
 
+    # 市场列表为空时安全跳过（返回空结果），避免对空列表拉取行情而抛错。
+    # 正常有持仓时行为与之前完全一致。
+    from concurrent.futures import Future
+
+    def _submit(pool, fn, codes, empty):
+        if codes:
+            return pool.submit(fn, codes)
+        fut = Future()
+        fut.set_result(empty)
+        return fut
+
     with ThreadPoolExecutor(max_workers=6) as pool:
-        f_spot_a = pool.submit(fetch_spot_a, ca)
-        f_fins = pool.submit(fetch_fins, ca)
-        f_earn = pool.submit(fetch_earnings, ca)
-        f_divs = pool.submit(fetch_divs, ca)
-        f_vols = pool.submit(fetch_vols, ca)
-        f_spot_hk = pool.submit(fetch_spot_hk, chk)
-        f_fins_hk = pool.submit(fetch_fins_hk, chk)
-        f_divs_hk = pool.submit(fetch_divs_hk, chk)
-        f_vols_hk = pool.submit(fetch_vols, chk, "H")
-        f_spot_us = pool.submit(fetch_us_spot, list(PORT_US.keys()))
-        f_divs_us = pool.submit(fetch_divs_us, list(PORT_US.keys()))
-        f_fins_us = pool.submit(fetch_fins_us, list(PORT_US.keys()))
+        f_spot_a = _submit(pool, fetch_spot_a, ca, pd.DataFrame())
+        f_fins = _submit(pool, fetch_fins, ca, {})
+        f_earn = _submit(pool, fetch_earnings, ca, {})
+        f_divs = _submit(pool, fetch_divs, ca, {})
+        f_vols = _submit(pool, fetch_vols, ca, {})
+        f_spot_hk = _submit(pool, fetch_spot_hk, chk, pd.DataFrame())
+        f_fins_hk = _submit(pool, fetch_fins_hk, chk, {})
+        f_divs_hk = _submit(pool, fetch_divs_hk, chk, {})
+        f_vols_hk = _submit(pool, fetch_vols, chk, "H")
+        f_spot_us = _submit(pool, fetch_us_spot, us_codes, pd.DataFrame())
+        f_divs_us = _submit(pool, fetch_divs_us, us_codes, {})
+        f_fins_us = _submit(pool, fetch_fins_us, us_codes, {})
         sa = f_spot_a.result()
         fa = f_fins.result()
         ea = f_earn.result()

@@ -330,7 +330,12 @@
     "channels": [
       "bark",
       "email"
-    ]
+    ],
+    "deviation": {
+      "d3": 20,
+      "d10": 50,
+      "d30": 100
+    }
   },
   "daily_push": {
     "enabled": true,
@@ -361,16 +366,58 @@
     "enabled": true,
     "time": "18:45",
     "weekday": 4,
-    "codes": ["508098", "508068"]
+    "codes": [
+      "508098",
+      "508068"
+    ]
   },
   "add_ladder": {
     "max_steps": 3,
-    "tiers": [0.5, 0.3, 0.2],
+    "tiers": [
+      0.5,
+      0.3,
+      0.2
+    ],
     "min_gap": 2.0
   },
   "risk_budget": {
     "enabled": true,
     "risk_pct": 1.5,
     "stop_loss_pct": 5.0
+  },
+  "screener": {
+    "enabled": true,
+    "time": "17:30",
+    "max_pe": 25,
+    "max_pb": 3.0,
+    "min_mcap": 50.0,
+    "min_dy": 3.0,
+    "min_lishing": 60,
+    "max_vol": 45,
+    "top_n": 30,
+    "push_top": 10,
+    "cap": 400,
+    "red_flags": [
+      "审计",
+      "ST",
+      "退市",
+      "现金流",
+      "违规"
+    ],
+    "w_dy": 1.0,
+    "w_lishing": 0.5,
+    "w_kelly": 0.3
+  },
+  "deviation": {
+    "enabled": true,
+    "time": "18:30",
+    "d3": 20,
+    "d10": 50,
+    "d30": 100
+  },
+  "ai_review": {
+    "enabled": true,
+    "time": "03:00",
+    "top_n": 5
   }
 }

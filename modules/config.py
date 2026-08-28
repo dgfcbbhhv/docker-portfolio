@@ -197,6 +197,44 @@ REIT_MONITOR = {
     "codes": list(_RM.get("codes", ["508098", "508068"])),
 }
 
+# ── 红利候选扫描（全市场分级扫描，借鉴 tick-stock-panel 思路） ──
+_SCREENER = _CFG.get("screener", {})
+SCREENER = {
+    "enabled": bool(_SCREENER.get("enabled", True)),
+    "time": str(_SCREENER.get("time", "17:30")),
+    "max_pe": float(_SCREENER.get("max_pe", 25)),
+    "max_pb": float(_SCREENER.get("max_pb", 3.0)),
+    "min_mcap": float(_SCREENER.get("min_mcap", 50.0)),
+    "min_dy": float(_SCREENER.get("min_dy", 3.0)),
+    "min_lishing": float(_SCREENER.get("min_lishing", 60)),
+    "max_vol": float(_SCREENER.get("max_vol", 45)),
+    "top_n": int(_SCREENER.get("top_n", 30)),
+    "push_top": int(_SCREENER.get("push_top", 10)),
+    "cap": int(_SCREENER.get("cap", 400)),
+    "red_flags": _SCREENER.get("red_flags", ["审计", "ST", "退市", "现金流", "违规"]),
+    "w_dy": float(_SCREENER.get("w_dy", 1.0)),
+    "w_lishing": float(_SCREENER.get("w_lishing", 0.5)),
+    "w_kelly": float(_SCREENER.get("w_kelly", 0.3)),
+}
+
+# ── 异动偏离监控（3/10/30 日累计偏离值口径） ──
+_DEVIATION = _CFG.get("deviation", {})
+DEVIATION = {
+    "enabled": bool(_DEVIATION.get("enabled", True)),
+    "time": str(_DEVIATION.get("time", "18:30")),
+    "d3": float(_DEVIATION.get("d3", 20)),
+    "d10": float(_DEVIATION.get("d10", 50)),
+    "d30": float(_DEVIATION.get("d30", 100)),
+}
+
+# ── AI 四维复盘（DeepSeek） ──
+_AI = _CFG.get("ai_review", {})
+AI_REVIEW = {
+    "enabled": bool(_AI.get("enabled", True)),
+    "time": str(_AI.get("time", "19:00")),
+    "top_n": int(_AI.get("top_n", 5)),
+}
+
 # ── 模拟盘 ──
 _PT = _CFG.get("paper_trade", {})
 PAPER_TRADE = {
