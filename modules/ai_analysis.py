@@ -34,21 +34,18 @@ def _summarize_announcements(ann_list, n=30):
         "增减持": ["减持", "增持", "回购"],
         "风险": ["违规", "处罚", "警示", "停牌", "风险", "立案", "问询"],
     }
-    cnt = {k: 0 for k in cats}
-    hits = []
+    lines = []
     for a in recent:
         t = a.get("title", "")
-        for cat, kws in cats.items():
+        cat = "其他"
+        for c, kws in cats.items():
             if any(k in t for k in kws):
-                cnt[cat] += 1
-        if any(k in t for k in ["分红", "派息", "利润分配", "减持", "增持", "违规", "处罚",
-                                "警示", "停牌", "风险提示", "业绩预告", "年报", "半年报"]):
-            hits.append(f"{a.get('date', '')} {t}")
-    parts = [f"{k}{v}条" for k, v in cnt.items() if v]
-    summary = f"近{n}日公告: " + (", ".join(parts) if parts else "无重点类")
-    if hits:
-        summary += "\n  重点: " + "; ".join(hits[:6])
-    return summary
+                cat = c
+                break
+        lines.append(f"  - {a.get('date', '????-??-??')} [{cat}] {t}")
+    if not lines:
+        return f"近{n}日公告: 无"
+    return f"近期公告清单（共{len(lines)}条，均来自交易所公开披露）:\n" + "\n".join(lines)
 
 
 def build_prompt(name, row, rt=None):
@@ -88,7 +85,13 @@ def build_prompt(name, row, rt=None):
         "2. 基本面：分红持续性 / 护城河 / 行业位置\n"
         "3. 财务面：ROE / 负债 / 现金流质量与风险点\n"
         "4. 资金面：结合上述主力/散户实时净流入与行业资金风向，判断资金态度与持续性\n"
-        "5. 消息面：结合上述近期公告（分红/业绩/减持/违规），提示需关注的事件与风险\n"
+        "5. 消息面：结合下方『近期公告清单』，提示需关注的事件与风险；只能引用清单内已列明的内容\n"
+        "\n【数据纪律（必须严格遵守）】\n"
+        "- 只能依据上面提供的字段与公告清单作答，不得编造任何数字。\n"
+        "- 凡下方未明确给出的具体数值（资本充足率、不良率、拨备覆盖率、除权除息日、每股分红金额、EPS/BPS 等），"
+        "一律不写具体数字，改用定性描述（如『资本充足率较高』『分红率稳定』）。\n"
+        "- 技术面的支撑/压力价位若给出，必须标注『（模型估计，非成交数据）』。\n"
+        "- 公告只能引用清单内的日期与标题，不得推断清单外的日期或金额。\n"
         "最后给一句结论：当前是否适合按 Kelly 仓位建 / 加仓，理由一句话。"
     )
     return prompt
