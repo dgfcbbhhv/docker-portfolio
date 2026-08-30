@@ -266,6 +266,73 @@ def _get_yf():
         return None
 
 
+
+def _av_used_today(idx):
+    """AlphaVantage key idx 当日使用次数 (data/av_usage.jsonl)"""
+    import os
+    from datetime import date
+    today = date.today().isoformat()
+    n = 0
+    try:
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "data", "av_usage.jsonl")) as f:
+            for line in f:
+                if line.startswith(today + " " + str(idx)):
+                    n += 1
+    except FileNotFoundError:
+        return 0
+    except Exception:
+        return 999
+    return n
+
+
+def _av_bump(idx):
+    """记录一次 AlphaVantage key idx 使用"""
+    import os
+    from datetime import date
+    try:
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "data", "av_usage.jsonl"), "a") as f:
+            f.write(date.today().isoformat() + " " + str(idx) + "\n")
+    except Exception:
+        pass
+
+
+def _av_append_fallback(c, result):
+    """美股分红最后兜底: AlphaVantage DIVIDENDS (腾讯+yfinance 均失败)。
+    双 key 轮换, 每 key 每日<=25 次, 超出即停。"""
+    import os
+    from datetime import date, timedelta
+    keys = [k for k in (os.environ.get("ALPHAVANTAGE_API_KEY1", "").strip(),
+                        os.environ.get("ALPHAVANTAGE_API_KEY2", "").strip()) if k]
+    if not keys or result.get("ttm"):
+        return result
+    import requests as _req
+    for idx, key in enumerate(keys):
+        if _av_used_today(idx) >= 25:
+            continue
+        try:
+            r = _req.get("https://www.alphavantage.co/query",
+                         params={"function": "DIVIDENDS", "symbol": c, "apikey": key},
+                         timeout=12)
+            _av_bump(idx)
+            rows = (r.json() or {}).get("data") or []
+            if not rows:
+                continue
+            cutoff = date.today() - timedelta(days=365)
+            ttm = 0.0
+            for row in rows:
+                try:
+                    ed = date.fromisoformat(row.get("ex_dividend_date", ""))
+                except Exception:
+                    continue
+                if ed >= cutoff:
+                    ttm += float(row.get("amount", 0) or 0)
+            if ttm > 0:
+                result["ttm"] = round(ttm, 4)
+                result["lfy"] = round(ttm, 4)
+            break
+        except Exception as _e:
+            logger.warning(f"[{__name__}] AlphaVantage 兜底失败 %s: %s", c, _e)
+    return result
 def _tx_us_quote(code):
     """腾讯美股实时报价 → 字段列表 或 None
     URL: http://qt.gtimg.cn/q=us{CODE}
@@ -342,6 +409,9 @@ def _fetch_one_div_us(c):
             except Exception as _e:
                 logger.warning(f"[{__name__}] %s", _e, exc_info=True)
 
+    # 兜底2: Alpha Vantage (腾讯+yfinance 均失败且配额内时最后尝试)
+    if result["ttm"] == 0:
+        result = _av_append_fallback(c, result)
     try:
         save("div", k, pd.DataFrame([result]))
     except Exception as _e:

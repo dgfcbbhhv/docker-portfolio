@@ -1,7 +1,10 @@
-"""AI 四维个股分析（技术 / 基本面 / 财务 / 消息面），接入 DeepSeek（OpenAI 兼容）。
+"""AI 四维个股分析（技术 / 基本面 / 财务 / 消息面），接入 OpenAI 兼容 LLM。
 
 复用 build_portfolio_df 产出的指标作为上下文，让 LLM 生成可落盘的复盘。
-需要环境变量 DEEPSEEK_API_KEY；缺失时优雅降级（返回 None，不阻断主流程）。
+provider 通过环境变量切换（优先级 AI_REVIEW_* > DEEPSEEK_*），缺失时优雅降级。
+- AI_REVIEW_BASE_URL / DEEPSEEK_API_KEY 对应的默认端点为 DeepSeek
+- AI_REVIEW_API_KEY / OPENROUTER_API_KEY / DEEPSEEK_API_KEY 任一即可
+- AI_REVIEW_MODEL / DEEPSEEK_MODEL 指定模型（如 deepseek-chat / deepseek/deepseek-chat）
 """
 import datetime
 import json
@@ -17,13 +20,24 @@ except Exception:
 
 logger = logging.getLogger(__name__)
 
-_DEEPSEEK_URL = "https://api.deepseek.com/v1/chat/completions"
 _DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
 _NOTES_DIR = os.path.join(os.path.dirname(__file__), "..", "notes")
 
 
+def _ai_review_url():
+    return os.environ.get("AI_REVIEW_BASE_URL",
+                           "https://api.deepseek.com/v1/chat/completions")
+
+
 def _api_key():
-    return os.environ.get("DEEPSEEK_API_KEY") or os.environ.get("DEEPSEEK_KEY")
+    return (os.environ.get("AI_REVIEW_API_KEY")
+            or os.environ.get("OPENROUTER_API_KEY")
+            or os.environ.get("DEEPSEEK_API_KEY")
+            or os.environ.get("DEEPSEEK_KEY"))
+
+
+def _ai_review_model():
+    return os.environ.get("AI_REVIEW_MODEL") or os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")
 
 
 def _summarize_announcements(ann_list, n=30):
@@ -234,15 +248,15 @@ def build_prompt(name, row, rt=None, portfolio_ctx=None, held_info=None, extra_i
 def analyze(name, row, model=None, portfolio_ctx=None, held_info=None, extra_info=None):
     key = _api_key()
     if not key:
-        logger.warning("[ai_analysis] DEEPSEEK_API_KEY 未配置，跳过")
+        logger.warning("[ai_analysis] AI_REVIEW_API_KEY / DEEPSEEK_API_KEY 未配置，跳过")
         return None
-    model = model or os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")
+    model = model or _ai_review_model()
     prompt = build_prompt(name, row, rt=row.get("_rt"),
                           portfolio_ctx=portfolio_ctx, held_info=held_info,
                           extra_info=extra_info)
     try:
         resp = requests.post(
-            _DEEPSEEK_URL,
+            _ai_review_url(),
             headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
             json={"model": model, "messages": [{"role": "user", "content": prompt}], "temperature": 0.3},
             timeout=60,

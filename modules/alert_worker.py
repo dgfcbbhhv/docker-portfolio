@@ -615,7 +615,11 @@ class AlertWorker:
             scheduler.add_daily_task("deviation_check", lambda: run_deviation_check(self),
                                      DEVIATION.get("time", "18:30"))
         if AI_REVIEW.get("enabled"):
-            scheduler.add_daily_task("ai_review", lambda: run_ai_review(self),
+            def _ai_review_weekdays_only():
+                if datetime.datetime.now().weekday() < 5:  # 仅周一至周五
+                    return run_ai_review(self)
+                logger.info("ai_review 跳过(非交易日/周末)")
+            scheduler.add_daily_task("ai_review", _ai_review_weekdays_only,
                                      AI_REVIEW.get("time", "19:00"))
         scheduler.add_daily_task("quarterly_calibration",
                                  self._quarterly_calibration, "03:20")
