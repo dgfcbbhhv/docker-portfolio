@@ -20,8 +20,13 @@ x-alert-env: &alert-env
   LONGBRIDGE_REGION: ${LONGBRIDGE_REGION:-cn}
   LONGBRIDGE_TOKEN_REFRESHED: ${LONGBRIDGE_TOKEN_REFRESHED:-}
   FMP_API_KEY: ${FMP_API_KEY:-}
+  ALPHAVANTAGE_API_KEY1: ${ALPHAVANTAGE_API_KEY1:-}
+  ALPHAVANTAGE_API_KEY2: ${ALPHAVANTAGE_API_KEY2:-}
   DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
   DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
+  AI_REVIEW_BASE_URL: ${AI_REVIEW_BASE_URL:-}
+  AI_REVIEW_API_KEY: ${AI_REVIEW_API_KEY:-}
+  AI_REVIEW_MODEL: ${AI_REVIEW_MODEL:-}
 
 x-app-volumes: &app-volumes
   - ./data:/app/data
@@ -54,7 +59,7 @@ services:
     network_mode: host
     restart: unless-stopped
     dns:
-      - 192.168.1.1
+      - 192.168.1.13
     environment:
       <<: *alert-env
       MODE: alert-worker
