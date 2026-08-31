@@ -289,6 +289,8 @@ def build_prompt(name, row, rt=None, portfolio_ctx=None, held_info=None, extra_i
         "- 【输出格式硬性要求】先以『**硬数字**』小节：仅复述输入已给出的数字（股价/PE/PB/股息/ROE/资金流/"
         "机构预期/北向，可附单位），每项后标 `(依据输入)`；再以『**定性判断**』小节做分析叙述，"
         "这两栏必须严格分开，禁止在叙述中夹带未提供的数字。\n"
+        "- 【无来源必声明】凡输入未提供、且你无法从输入追溯的事实、数据、日期或公告，一律在相应位置"
+        "明确写『（无可靠来源）』并直接跳过，**严禁自行编造或凭常识补全**。宁可答『数据未提供』也不得臆测。\n"
         "最后另起一行给一句结论：当前是否适合按 Kelly 仓位建 / 加仓，理由一句话。"
     )
     return prompt
@@ -525,6 +527,12 @@ def _validate_output(code, name, text, row, rt, extra_info):
     if suspect_tokens:
         flags.append("⚠️ AI 输出含无法从输入追源的数值：" + "、".join(suspect_tokens[:8]) +
                      ("…" if len(suspect_tokens) > 8 else "") + "，已列于文末【数据校验】。")
+    # 3b) 低置信度回退：存疑项过多 → 整篇降级为『待审』，不得直接采信（Temp Scaling 后半）
+    low_conf_thr = int(os.environ.get("AI_REVIEW_LOW_CONF", "3"))
+    n_issues = len(issues)
+    if n_issues >= low_conf_thr:
+        flags.append(f"⚠️【待审·低置信度】程序校验发现 {n_issues} 处无法追源的存疑项（阈值 {low_conf_thr}），"
+                     "本篇结论置信度不足，请人工复核后再决策，勿直接按结论执行。")
     if flags:
         text = text + "\n\n" + "\n".join(flags)
     return text, issues
@@ -592,11 +600,12 @@ def _recheck_date(date_str, code, rt):
         return False
 
 
-def _write_metrics(validation):
+def _write_metrics(validation, worker=None):
     """幻觉率统计 + 审计日志落盘（notes/hallucination_metrics*.json + 审计 trace）。
 
     - hallucination_metrics_<date>.json : 当日明细
     - hallucination_metrics.json         : 滚动历史（追加每日摘要）
+    - 命中阈值(AI_REVIEW_ALERT_RATE, 默认0.05) → 触发异常报警（bark/email）
     """
     try:
         today = datetime.datetime.now().strftime("%Y-%m-%d")
@@ -644,8 +653,68 @@ def _write_metrics(validation):
             json.dump(hist, f, ensure_ascii=False, indent=2)
         logger.info("[ai_analysis] metrics: %d stocks, %d flagged (rate=%.1f%%)",
                     n_total, n_flagged, daily["flagged_rate"] * 100)
+        # 2) 阈值异常报警（幻觉率过高 或 双模型分歧率过高）
+        alert_thr = float(os.environ.get("AI_REVIEW_ALERT_RATE", "0.05") or 0.05)
+        cross_thr = float(os.environ.get("AI_REVIEW_ALERT_CROSS", "0.5") or 0.5)
+        alert_msgs = []
+        if n_total > 0 and daily["flagged_rate"] > alert_thr:
+            alert_msgs.append(f"存疑率 {daily['flagged_rate']*100:.0f}% > 阈值 {alert_thr*100:.0f}%")
+        if n_total > 0 and n_cross_disagree > 0 and float(n_cross_disagree) / n_total > cross_thr:
+            alert_msgs.append(f"双模型分歧率 {float(n_cross_disagree)/n_total*100:.0f}% > {cross_thr*100:.0f}%")
+        if alert_msgs and worker is not None:
+            try:
+                worker.sender.send_multi(
+                    "[AI复盘·幻觉预警]", f"{today} 候选 {n_total} 只，预警：{'；'.join(alert_msgs)}，详见 {hist_path}")
+            except Exception as e:
+                logger.warning("[ai_analysis] 幻觉预警推送失败: %s", e)
+        if alert_msgs:
+            logger.warning("[ai_analysis] 幻觉预警: %s", "；".join(alert_msgs))
     except Exception as e:
         logger.warning("[ai_analysis] write metrics failed: %s", e)
+
+
+def record_feedback(code, verdict=None, flagged=False, note="", source=None):
+    """用户反馈回流：记录『某只候选被用户判定为幻觉/存疑』到 notes/feedback.json。
+
+    供前端或报告提供『标记为幻觉』按钮调用；这些样本后续可用于生成负样本/微调。
+    code(必填)，verdict=结论快照，flagged=用户是否判为幻觉，note=备注。返回 dict 或 None。
+    """
+    try:
+        if not code:
+            return None
+        if source is None:
+            source = os.environ.get("AI_REVIEW_MODEL", "")
+        rec = {
+            "ts": datetime.datetime.now().isoformat(),
+            "date": datetime.datetime.now().strftime("%Y-%m-%d"),
+            "code": str(code),
+            "verdict": verdict if isinstance(verdict, str) else "",
+            "flagged": bool(flagged),
+            "note": note if isinstance(note, str) else "",
+            "model": str(source),
+        }
+        mdir = _NOTES_DIR
+        os.makedirs(mdir, exist_ok=True)
+        path = os.path.join(mdir, "feedback.json")
+        arr = []
+        if os.path.exists(path):
+            try:
+                with open(path, encoding="utf-8") as f:
+                    arr = json.load(f)
+                    if not isinstance(arr, list):
+                        arr = []
+            except Exception:
+                arr = []
+        arr.append(rec)
+        # 简单滑动窗口：最多保留最近 10000 条，防止无限增长
+        arr = arr[-10000:]
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(arr, f, ensure_ascii=False, indent=2)
+        logger.info("[ai_analysis] feedback recorded for %s (flagged=%s)", code, flagged)
+        return rec
+    except Exception as e:
+        logger.warning("[ai_analysis] record feedback failed: %s", e)
+        return None
 
 
 def ai_review_candidates(payload=None, top_n=5, worker=None):
@@ -706,7 +775,7 @@ def ai_review_candidates(payload=None, top_n=5, worker=None):
                 md += f"\n**{code}** 存疑项 {len(issues)} 条：\n" + "\n".join(f"- {i}" for i in issues)
             else:
                 md += f"\n**{code}** 所有数值均可从输入追源，未发现编造硬数字。✅\n"
-    _write_metrics(validation)
+    _write_metrics(validation, worker=worker)
     os.makedirs(os.path.join(_NOTES_DIR, "ai复盘"), exist_ok=True)
     out = os.path.join(_NOTES_DIR, "ai复盘", "ai_review_%s.md" % datetime.datetime.now().strftime("%Y%m%d"))
     with open(out, "w", encoding="utf-8") as f:
