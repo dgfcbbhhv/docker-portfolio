@@ -27,6 +27,7 @@ x-alert-env: &alert-env
   AI_REVIEW_BASE_URL: ${AI_REVIEW_BASE_URL:-}
   AI_REVIEW_API_KEY: ${AI_REVIEW_API_KEY:-}
   AI_REVIEW_MODEL: ${AI_REVIEW_MODEL:-}
+  AI_REVIEW_MODEL_B: ${AI_REVIEW_MODEL_B:-}
 
 x-app-volumes: &app-volumes
   - ./data:/app/data
