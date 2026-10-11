@@ -55,7 +55,7 @@ def render(tab, df=None, layer_summaries=None):
                 st.text_input("Chat ID",value=sender.cfg.get("tg_cid",""),key="tg_cid")
             elif ch=="Bark":
                 st.caption("推送地址: 公共 api.day.app 或自建服务器 http://NAS_IP:8080/设备Key/ ; 若填写16位加密密钥则启用AES加密推送")
-                st.text_input("Bark URL",value=sender.cfg.get("bark_url",""),key="bk_url",placeholder="http://192.168.31.24:8080/设备Key/")
+                st.text_input("Bark URL",value=sender.cfg.get("bark_url",""),key="bk_url",placeholder="http://<NAS_HOST>:8080/设备Key/")
                 st.text_input("加密密钥KEY(16字节, 可选)",value=sender.cfg.get("bark_key",""),key="bk_key",placeholder="1234567890123456",type="password")
                 st.text_input("加密IV(16字符, 与App设置一致, 可选)",value=sender.cfg.get("bark_iv",""),key="bk_iv",placeholder="1234567890123456")
                 if sender.cfg.get("bark_key"):
