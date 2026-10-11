@@ -1,9 +1,9 @@
 # NAS 组合系统修复与长桥数据源接入 — 全程记录
 
 > 记录周期:2026-08-08 ~ 2026-08-09
-> 项目:`/vol1/1000/docker-portfolio/`(NAS,dividend-portfolio / dividend-alert-worker 双容器)
-> 本地工作副本:`C:\Users\weixiao\AppData\Local\Temp\opencode\nas_portal\`
-> D 盘镜像:`D:/weixiao/Documents/Codex/2026-07-17/new-chat/outputs/docker-portfolio/`
+> 项目:`/<NAS_DEPLOY_DIR>/`(NAS,dividend-portfolio / dividend-alert-worker 双容器)
+> 本地工作副本:`C:\Users\<USER>\AppData\Local\Temp\opencode\nas_portal\`
+> D 盘镜像:`D:/<USER>/Documents/Codex/2026-07-17/new-chat/outputs/docker-portfolio/`
 
 ---
 
@@ -100,13 +100,13 @@ print(len(r:=m.fetch_spot(['600900','00002','00006','AAPL'])), [(x['c'],x['price
 
 ### token 一致性
 ```
-grep -o 'LONGBRIDGE_ACCESS_TOKEN=.*' /vol1/1000/docker-portfolio/.env | md5sum
+grep -o 'LONGBRIDGE_ACCESS_TOKEN=.*' /<NAS_DEPLOY_DIR>/.env | md5sum
 docker exec dividend-portfolio python -c "import os,hashlib;print(hashlib.md5(os.environ['LONGBRIDGE_ACCESS_TOKEN'].encode()).hexdigest())"
 ```
 
 ### 重建 + 装 SDK(重 build 则用 lock)
 ```
-cd /vol1/1000/docker-portfolio && docker compose up -d --no-deps --force-recreate
+cd /<NAS_DEPLOY_DIR> && docker compose up -d --no-deps --force-recreate
 docker exec dividend-portfolio pip install longbridge==4.4.3
 docker exec dividend-alert-worker pip install longbridge==4.4.3
 ```
