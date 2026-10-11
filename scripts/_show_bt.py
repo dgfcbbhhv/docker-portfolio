@@ -1,5 +1,5 @@
 import json
-d = json.load(open('/vol1/1000/docker-portfolio/data/reports/signal_regime_backtest.json'))
+d = json.load(open('/<NAS_DEPLOY_DIR>/data/reports/signal_regime_backtest.json'))
 print('=== bench ===', json.dumps(d['bench'], ensure_ascii=False))
 print('=== per_stock count:', len(d['per_stock']))
 for c, v in d['per_stock'].items():
