@@ -60,7 +60,7 @@ services:
     network_mode: host
     restart: unless-stopped
     dns:
-      - 192.168.1.13
+      - <LAN_DNS>
     environment:
       <<: *alert-env
       MODE: alert-worker
