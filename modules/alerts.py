@@ -209,7 +209,7 @@ class AlertSender:
 
         支持两种服务器形态：
           - 公共服务器: https://api.day.app/DEVICE_KEY/
-          - 自建服务器: http://192.168.31.24:8080/DEVICE_KEY/
+          - 自建服务器: http://<NAS_HOST>:8080/DEVICE_KEY/
         支持两种发送模式：
           - 明文: 标题/内容拼入 URL 路径 (/DEVICE_KEY/标题/内容)
           - 加密: 配置 bark_key 后启用 AES-128-CBC，将 {"title","body"} json
