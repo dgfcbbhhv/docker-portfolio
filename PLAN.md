@@ -1705,27 +1705,27 @@ services:
 ## 16. 部署到NAS
 
 > 实际环境是 Debian 12 NAS（非群晖 DSM），无 `/volume1`。Docker 28.5.2 + Compose v2.40.3。
-> 部署路径：`/vol1/1000/docker-portfolio`（compose 从该目录读取 `.env`）。
+> 部署路径：`/<NAS_DEPLOY_DIR>`（compose 从该目录读取 `.env`）。
 > `app.py`、`modules/`、`config.json`、`data/`、`notes/` 均 bind mount，改代码后容器内即生效。
 
 **上传（更新代码时）：** 打包排除 `.venv`/`data`/`notes`/`.git`/`__pycache__`，scp 到 NAS 后解压覆盖到部署目录：
 ```bash
 tar --exclude='.venv' --exclude='__pycache__' --exclude='.pytest_cache' --exclude='*.pyc' \
     --exclude='.git' --exclude='.workbuddy' --exclude='data' --exclude='notes' --exclude='.env' \
-    -czf /c/Users/weixiao/AppData/Local/Temp/opencode/portfolio-sync.tar.gz \
-    -C /c/Users/weixiao/Documents/Codex/2026-07-17/new-chat/outputs/docker-portfolio .
-scp /c/Users/weixiao/AppData/Local/Temp/opencode/portfolio-sync.tar.gz 15036752554@192.168.31.24:/tmp/
+    -czf /c/Users/<USER>/AppData/Local/Temp/opencode/portfolio-sync.tar.gz \
+    -C /c/Users/<USER>/Documents/Codex/2026-07-17/new-chat/outputs/docker-portfolio .
+scp /c/Users/<USER>/AppData/Local/Temp/opencode/portfolio-sync.tar.gz <NAS_USER>@<NAS_HOST>:/tmp/
 ```
 
 **NAS上重建：**
 ```bash
-sudo sh -c 'cd /vol1/1000/docker-portfolio && tar -xzf /tmp/portfolio-sync.tar.gz && rm /tmp/portfolio-sync.tar.gz'
-sudo sh -c 'cd /vol1/1000/docker-portfolio && docker compose up -d --build'
+sudo sh -c 'cd /<NAS_DEPLOY_DIR> && tar -xzf /tmp/portfolio-sync.tar.gz && rm /tmp/portfolio-sync.tar.gz'
+sudo sh -c 'cd /<NAS_DEPLOY_DIR> && docker compose up -d --build'
 ```
 
-**密钥：** `/vol1/1000/docker-portfolio/.env`（chmod 600，结构见 `.env.example`），填好后 `docker compose up -d` 生效。
+**密钥：** `/<NAS_DEPLOY_DIR>/.env`（chmod 600，结构见 `.env.example`），填好后 `docker compose up -d` 生效。
 
-**浏览器：** `http://192.168.31.24:8501`
+**浏览器：** `http://<NAS_HOST>:8501`
 
 ---
 
